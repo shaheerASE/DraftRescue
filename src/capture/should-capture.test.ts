@@ -3,6 +3,7 @@ import {
   type CaptureContext,
   editorKindOf,
   isSensitiveIdentifier,
+  labelTextFor,
   hostMatches,
   normalizeIdentifier,
   shouldCapture,
@@ -407,5 +408,81 @@ describe('shouldCapture — Stripe Elements markup specifically', () => {
     expect(shouldCapture(mount(html), ctx({ frameHostname: 'example.com' }))).toMatchObject({
       capture: false,
     });
+  });
+});
+
+/**
+ * Fields inside web components.
+ *
+ * `resolveField` uses `composedPath()` so that a field inside an open shadow
+ * root IS captured — that is a deliberate feature and most of why this works on
+ * sites the alternatives do not. The consequence is that every refusal rule has
+ * to reach across the same boundary, because `closest()`, form ownership and
+ * `document.getElementById` all stop at a shadow root. A checkout built as a
+ * custom element is an ordinary thing now, not an exotic one.
+ */
+describe('shouldCapture — the shadow boundary the capture path crosses', () => {
+  /** Mount `inner` inside an open shadow root, hosted inside `outer`. */
+  function mountShadow(outer: string, inner: string): Element {
+    document.body.innerHTML = outer;
+    const host = document.querySelector('[data-host]');
+    if (!host) throw new Error('fixture must mark one element with data-host');
+    const root = host.attachShadow({ mode: 'open' });
+    root.innerHTML = inner;
+    const el = root.querySelector('[data-t]');
+    if (!el) throw new Error('fixture must mark one element with data-t');
+    return el;
+  }
+
+  it('refuses a vaguely-named field inside a payment form in the same shadow root', () => {
+    const el = mountShadow(
+      '<x-checkout data-host></x-checkout>',
+      '<form id="billing-card-form"><input data-t name="number"></form>',
+    );
+    expect(shouldCapture(el, ctx())).toMatchObject({
+      capture: false,
+      reason: 'payment-form',
+    });
+  });
+
+  it('refuses when the payment form is outside the component entirely', () => {
+    const el = mountShadow(
+      '<form action="/checkout"><x-field data-host></x-field></form>',
+      '<input data-t name="code">',
+    );
+    expect(shouldCapture(el, ctx())).toMatchObject({
+      capture: false,
+      reason: 'payment-form',
+    });
+  });
+
+  it('reads an aria-labelledby label that lives inside the shadow root', () => {
+    const el = mountShadow(
+      '<x-checkout data-host></x-checkout>',
+      '<span id="lbl">Card number</span><input data-t name="n" aria-labelledby="lbl">',
+    );
+    expect(labelTextFor(el)).toContain('Card number');
+    expect(shouldCapture(el, ctx())).toMatchObject({
+      capture: false,
+      reason: 'identifier',
+    });
+  });
+
+  it('reads a wrapping label inside the shadow root', () => {
+    const el = mountShadow(
+      '<x-pay data-host></x-pay>',
+      '<label>Security code <input data-t name="n"></label>',
+    );
+    expect(labelTextFor(el)).toContain('Security code');
+    expect(shouldCapture(el, ctx())).toMatchObject({ capture: false });
+  });
+
+  it('still captures an ordinary comment box inside a web component', () => {
+    // The point is not to refuse everything in a shadow root.
+    const el = mountShadow(
+      '<x-comments data-host></x-comments>',
+      '<label>Your reply <textarea data-t name="body"></textarea></label>',
+    );
+    expect(shouldCapture(el, ctx())).toMatchObject({ capture: true });
   });
 });

@@ -136,15 +136,75 @@ function attr(el: Element, name: string): string | null {
   return el.getAttribute(name);
 }
 
+/**
+ * The element a shadow root hangs off, or null when we have reached the
+ * document.
+ *
+ * Read through `Partial<ShadowRoot>` rather than an `instanceof` check because
+ * a Document has no `host` at all, and duck-typing it works the same in the
+ * browser, in a frame, and under the test DOM.
+ */
+function shadowHostOf(node: Node): Element | null {
+  const root = node.getRootNode() as Partial<ShadowRoot>;
+  return root.host ?? null;
+}
+
+/**
+ * `closest`, except it does not stop at a shadow boundary.
+ *
+ * The capture path goes out of its way to reach fields inside open shadow roots
+ * — `resolveField` uses `composedPath()` precisely so that web components are
+ * covered, and that is most of why this works on sites the alternatives do not.
+ * Every rule that decides a field is *unsafe* therefore has to reach exactly as
+ * far. `Element.closest` walks `parentElement` and stops dead at a shadow root,
+ * which would leave a card field inside a custom element with none of the
+ * checks that depend on its ancestors.
+ */
+function closestAcrossShadow(el: Element, selector: string): Element | null {
+  let node: Element | null = el;
+  while (node) {
+    const found = node.closest(selector);
+    if (found) return found;
+    node = shadowHostOf(node);
+  }
+  return null;
+}
+
+/**
+ * Every <form> above a field, innermost first, crossing shadow boundaries.
+ *
+ * `el.form` is the browser's own answer and is correct, but form ownership does
+ * not cross a shadow root either: a field inside a web component belongs to no
+ * form as far as the DOM is concerned, even when the whole checkout is wrapped
+ * in one.
+ */
+function* formsAbove(el: Element): Generator<Element> {
+  const owned = (el as HTMLInputElement).form ?? null;
+  if (owned) yield owned;
+
+  let node: Element | null = el;
+  while (node) {
+    const form = node.closest('form');
+    if (form && form !== owned) yield form;
+    node = shadowHostOf(node);
+  }
+}
+
 /** The label text associated with a field, via any of the ways sites express it. */
 export function labelTextFor(el: Element): string | null {
   const parts: string[] = [];
 
   const labelledBy = attr(el, 'aria-labelledby');
   if (labelledBy) {
-    const doc = el.ownerDocument;
+    // Resolved against the field's own root, not the document. IDs inside a
+    // shadow root are scoped to that root, so `document.getElementById` returns
+    // null for every shadow-DOM field — which would silently discard the label
+    // on exactly the fields ("Card number", "Security code") this most needs to
+    // read. The document is still checked as a fallback, which is what the root
+    // *is* for an ordinary light-DOM field.
+    const root = el.getRootNode() as Partial<Document>;
     for (const id of labelledBy.split(/\s+/)) {
-      const target = doc.getElementById(id);
+      const target = root.getElementById?.(id) ?? el.ownerDocument.getElementById(id);
       if (target?.textContent) parts.push(target.textContent);
     }
   }
@@ -158,7 +218,7 @@ export function labelTextFor(el: Element): string | null {
       if (label.textContent) parts.push(label.textContent);
     }
   } else {
-    const wrapping = el.closest('label');
+    const wrapping = closestAcrossShadow(el, 'label');
     if (wrapping?.textContent) parts.push(wrapping.textContent);
   }
 
@@ -312,8 +372,7 @@ export function shouldCapture(el: Element | null, ctx: CaptureContext): CaptureD
   // A field inside something that looks like a checkout form is refused whatever
   // it is called, because payment forms routinely name fields vaguely: `number`,
   // `code`, `name`.
-  const form = (el as HTMLInputElement).form ?? el.closest('form');
-  if (form) {
+  for (const form of formsAbove(el)) {
     const action = attr(form, 'action') ?? '';
     const formId = attr(form, 'id') ?? '';
     const formName = attr(form, 'name') ?? '';

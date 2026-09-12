@@ -20,6 +20,28 @@ function pill(): HTMLButtonElement | null {
   return prompt.shadowRoot()?.querySelector('button.pill') ?? null;
 }
 
+/**
+ * Marks an event as browser-generated.
+ *
+ * The pill ignores untrusted events on purpose — a page that reached through
+ * the open shadow root could otherwise click the button itself — so a test
+ * using a bare `new MouseEvent` would be exercising the guard rather than the
+ * behaviour it means to check. `isTrusted` is read-only, hence defineProperty.
+ */
+function real<T extends Event>(event: T): T {
+  Object.defineProperty(event, 'isTrusted', { value: true });
+  return event;
+}
+
+/** A real pointer arriving over the pill, which is what reveals the preview. */
+function hover(): void {
+  pill()?.dispatchEvent(real(new Event('pointerenter')));
+}
+
+function unhover(): void {
+  pill()?.dispatchEvent(new Event('pointerleave'));
+}
+
 beforeEach(() => {
   document.body.innerHTML = '';
   document.querySelectorAll(`[${UI_MARKER}]`).forEach((el) => el.remove());
@@ -93,6 +115,7 @@ describe('createRestorePrompt — the label', () => {
     // first thought on seeing the result is "did it pick the wrong draft?".
     const text = 'Dear hiring manager, I am writing about';
     prompt.show(field(), Date.now(), text, () => {});
+    hover();
     const title = pill()?.title ?? '';
     expect(title).toContain('Dear hiring manager');
     expect(title).toContain(`${text.length} characters`);
@@ -100,11 +123,13 @@ describe('createRestorePrompt — the label', () => {
 
   it('truncates a long preview rather than filling the screen', () => {
     prompt.show(field(), Date.now(), 'x'.repeat(500), () => {});
+    hover();
     expect((pill()?.title ?? '').length).toBeLessThan(300);
   });
 
   it('collapses newlines in the preview so the tooltip stays compact', () => {
     prompt.show(field(), Date.now(), 'line one\n\n\nline two', () => {});
+    hover();
     expect(pill()?.title).toContain('line one line two');
   });
 
@@ -129,8 +154,26 @@ describe('createRestorePrompt — activation', () => {
     const onActivate = vi.fn();
     prompt.show(field(), Date.now(), DRAFT, onActivate);
 
-    pill()?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    pill()?.dispatchEvent(real(new MouseEvent('click', { bubbles: true })));
     expect(onActivate).toHaveBeenCalledTimes(1);
+  });
+
+  /**
+   * The pill lives in an `open` shadow root, so a script on the page can find
+   * the button and call .click() on it. That must not restore anything: the
+   * text would land in a field the page can read, without the user having asked
+   * for it, and a draft the user never submitted is exactly what this extension
+   * exists to keep private.
+   */
+  it('ignores a click the page synthesised', () => {
+    const onActivate = vi.fn();
+    prompt.show(field(), Date.now(), DRAFT, onActivate);
+
+    pill()?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    pill()?.click();
+
+    expect(onActivate).not.toHaveBeenCalled();
+    expect(prompt.anchor()).not.toBeNull(); // still offering, not dismissed
   });
 
   it('cancels mousedown, so clicking does not blur the field', () => {
@@ -145,7 +188,7 @@ describe('createRestorePrompt — activation', () => {
 
   it('hides itself after being clicked', () => {
     prompt.show(field(), Date.now(), DRAFT, () => {});
-    pill()?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    pill()?.dispatchEvent(real(new MouseEvent('click', { bubbles: true })));
     expect(prompt.anchor()).toBeNull();
   });
 
@@ -153,8 +196,8 @@ describe('createRestorePrompt — activation', () => {
     const onActivate = vi.fn();
     prompt.show(field(), Date.now(), DRAFT, onActivate);
 
-    pill()?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-    pill()?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    pill()?.dispatchEvent(real(new MouseEvent('click', { bubbles: true })));
+    pill()?.dispatchEvent(real(new MouseEvent('click', { bubbles: true })));
 
     expect(onActivate).toHaveBeenCalledTimes(1);
   });
@@ -164,10 +207,53 @@ describe('createRestorePrompt — activation', () => {
     document.addEventListener('click', onPageClick);
     prompt.show(field(), Date.now(), DRAFT, () => {});
 
-    pill()?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    pill()?.dispatchEvent(real(new MouseEvent('click', { bubbles: true })));
     document.removeEventListener('click', onPageClick);
 
     expect(onPageClick).not.toHaveBeenCalled();
+  });
+});
+
+describe('createRestorePrompt — the draft is not left in the page', () => {
+  /**
+   * Everything in the shadow tree is readable by the page. Showing the pill
+   * takes no user action beyond focusing a field, so anything written onto the
+   * element at that moment is handed to whatever else is running on the site.
+   */
+  it('puts no part of the draft in the DOM when it is offered', () => {
+    prompt.show(field(), Date.now(), DRAFT, () => {});
+
+    const markup = prompt.shadowRoot()?.innerHTML ?? '';
+    expect(markup).not.toContain(DRAFT);
+    expect(markup).not.toContain(DRAFT.slice(0, 20));
+    expect(pill()?.hasAttribute('title')).toBe(false);
+  });
+
+  it('reveals the preview only under a real pointer', () => {
+    prompt.show(field(), Date.now(), DRAFT, () => {});
+
+    pill()?.dispatchEvent(new Event('pointerenter')); // page-synthesised
+    expect(pill()?.hasAttribute('title')).toBe(false);
+
+    hover();
+    expect(pill()?.title).toContain(DRAFT);
+  });
+
+  it('takes the preview back off the element when the pointer leaves', () => {
+    prompt.show(field(), Date.now(), DRAFT, () => {});
+    hover();
+    unhover();
+    expect(pill()?.hasAttribute('title')).toBe(false);
+  });
+
+  it('forgets the draft once the prompt is hidden', () => {
+    prompt.show(field(), Date.now(), DRAFT, () => {});
+    hover();
+    prompt.hide();
+
+    expect(pill()?.hasAttribute('title')).toBe(false);
+    hover(); // a hover after hiding must not resurrect it
+    expect(pill()?.hasAttribute('title')).toBe(false);
   });
 });
 

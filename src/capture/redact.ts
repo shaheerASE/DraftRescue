@@ -56,17 +56,63 @@ export function luhn(digits: string): boolean {
  */
 const DIGIT_RUN = /\d(?:[ -]?\d)*/g;
 
+/**
+ * Everything that can sit between two groups of digits and look like a space.
+ *
+ * This exists because a plain `[ -]` is not what reaches us. A contenteditable
+ * turns typed spaces into non-breaking ones and `innerText` hands them back as
+ * U+00A0, so `4242 4242 4242 4242` typed into Gmail arrives here with four
+ * NBSPs in it and decomposes into four harmless 4-digit runs. Pasting a number
+ * out of a rendered page, a statement or a PDF brings whatever separator that
+ * document used — a figure space, a narrow NBSP, sometimes a zero-width joiner
+ * left over from the markup.
+ *
+ * Matching is done against a copy with all of these folded to a plain space.
+ * The fold is one character for one character, so the positions of the matches
+ * are the positions in the original, and everything outside a match is copied
+ * across untouched.
+ */
+const SEPARATOR_LIKE = /[\p{Zs}\u200b-\u200d\u2060\ufeff]/gu;
+
+/**
+ * Find matches in the normalised copy, cut them out of the original.
+ *
+ * Written once and shared because the card and CNIC passes need exactly the
+ * same "match over there, replace over here" behaviour, and getting the offsets
+ * wrong in one of them would be a silent leak rather than a visible bug.
+ */
+function replaceMatches(
+  input: string,
+  pattern: RegExp,
+  accept: (match: string) => boolean,
+): RedactionResult {
+  const probe = input.replace(SEPARATOR_LIKE, ' ');
+
+  let count = 0;
+  let out = '';
+  let taken = 0;
+
+  for (const found of probe.matchAll(pattern)) {
+    const match = found[0];
+    const at = found.index;
+    if (at === undefined || !accept(match)) continue;
+
+    out += input.slice(taken, at) + REDACTED;
+    taken = at + match.length;
+    count++;
+  }
+
+  if (count === 0) return { text: input, count: 0 };
+  return { text: out + input.slice(taken), count };
+}
+
 /** Card-shaped: 13 to 19 digits, and the checksum has to agree. */
 function redactCardNumbers(input: string): RedactionResult {
-  let count = 0;
-  const text = input.replace(DIGIT_RUN, (match) => {
+  return replaceMatches(input, DIGIT_RUN, (match) => {
     const digits = match.replace(/[^0-9]/g, '');
-    if (digits.length < 13 || digits.length > 19) return match;
-    if (!luhn(digits)) return match;
-    count++;
-    return REDACTED;
+    if (digits.length < 13 || digits.length > 19) return false;
+    return luhn(digits);
   });
-  return { text, count };
 }
 
 /**
@@ -81,12 +127,7 @@ function redactCardNumbers(input: string): RedactionResult {
 const CNIC = /(?<!\d)\d{5}[- ]?\d{7}[- ]?\d(?!\d)/g;
 
 function redactCnic(input: string): RedactionResult {
-  let count = 0;
-  const text = input.replace(CNIC, () => {
-    count++;
-    return REDACTED;
-  });
-  return { text, count };
+  return replaceMatches(input, CNIC, () => true);
 }
 
 /**

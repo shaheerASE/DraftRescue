@@ -52,12 +52,30 @@ const SAFE_URL = /^(https?:|mailto:|tel:)/i;
 /** Beyond this we keep the plain text only. Formatting is a nicety; text is not. */
 export const MAX_HTML_BYTES = 128 * 1024;
 
+/**
+ * Characters a browser throws away before it looks at a URL's scheme: the C0
+ * control range (which includes tab, newline and carriage return) and DEL.
+ *
+ * This is the whole reason this function is not a one-line regex. The URL
+ * standard has browsers strip ASCII tab, LF and CR from anywhere in a URL, and
+ * strip leading control characters and spaces, *before* parsing the scheme. So
+ * `java<TAB>script:alert(1)` is a relative path to a naive regex and a
+ * javascript: URL to Chrome. Test the scheme against what the browser will
+ * actually see, not against what was written.
+ *
+ * We remove the whole control range rather than only the three characters the
+ * standard names. That is stricter than a browser, which can only ever make us
+ * refuse an href — and an href with a control character in it was already
+ * broken.
+ */
+const URL_IGNORED = /[\u0000-\u001f\u007f]/g;
+
 function isSafeHref(value: string): boolean {
-  const trimmed = value.trim();
+  const url = value.replace(URL_IGNORED, '').replace(/^ +/, '');
   // Relative URLs are fine and common in editors; anything with a scheme has to
   // be on the allowlist, which keeps out javascript: and data:.
-  if (!/^[a-z][a-z0-9+.-]*:/i.test(trimmed)) return true;
-  return SAFE_URL.test(trimmed);
+  if (!/^[a-z][a-z0-9+.-]*:/i.test(url)) return true;
+  return SAFE_URL.test(url);
 }
 
 /**
@@ -129,6 +147,26 @@ function clean(node: Element): void {
 export function sanitizeHtml(source: Element): string | undefined {
   const clone = source.cloneNode(true) as Element;
   clean(clone);
+
+  /**
+   * Second redaction pass, across element boundaries.
+   *
+   * `clean` redacts text node by text node, which is all it can do — it is
+   * editing the tree in place and a match cannot span two nodes. But a text
+   * node boundary is the normal state of a contenteditable: bold one group of a
+   * card number, or paste from anywhere styled, and Gmail, Slack, Quill and
+   * Lexical all split the run into spans. Each half is then too short to look
+   * like a card, so nothing is redacted and the full number goes to disk —
+   * while the plain text stored alongside it, which is read whole, says
+   * `[redacted]`. A row that claims to be clean and is not is the worst
+   * possible version of this bug.
+   *
+   * When the joined text redacts to something the node-by-node pass did not
+   * catch, the markup is thrown away and the draft is stored as text only.
+   * Reassembling the match across nodes would keep the formatting, but this
+   * file's rule is already that formatting is a nicety and text is not.
+   */
+  if (redact(clone.textContent ?? '').count > 0) return undefined;
 
   const html = clone.innerHTML;
   if (!html) return undefined;

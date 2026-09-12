@@ -116,3 +116,62 @@ describe('redact — combined', () => {
     expect(result.text).toBe(`line one\n${REDACTED}\nline three`);
   });
 });
+
+/**
+ * The separators that are not the space key.
+ *
+ * These are not an attacker's trick — they are the ordinary output of typing
+ * into a rich editor (Chrome writes &nbsp; for spaces it does not want to
+ * collapse, and innerText hands it back as U+00A0) and of pasting a number out
+ * of a rendered page or a bank statement. Before this was handled, a card
+ * number typed into Gmail went to disk in full.
+ */
+describe('redact — separators that only look like a space', () => {
+  const NBSP = String.fromCharCode(0xa0);
+  const FIGURE_SPACE = String.fromCharCode(0x2007);
+  const NARROW_NBSP = String.fromCharCode(0x202f);
+  const THIN_SPACE = String.fromCharCode(0x2009);
+  const ZWSP = String.fromCharCode(0x200b);
+  const WORD_JOINER = String.fromCharCode(0x2060);
+
+  it.each([
+    ['non-breaking space', NBSP],
+    ['figure space', FIGURE_SPACE],
+    ['narrow non-breaking space', NARROW_NBSP],
+    ['thin space', THIN_SPACE],
+    ['zero-width space', ZWSP],
+    ['word joiner', WORD_JOINER],
+  ])('redacts a card number grouped with a %s', (_name, gap) => {
+    const result = redact(`Pay with 4242${gap}4242${gap}4242${gap}4242 please`);
+    expect(result.text).toBe(`Pay with ${REDACTED} please`);
+    expect(result.count).toBe(1);
+  });
+
+  it.each([
+    ['non-breaking space', NBSP],
+    ['narrow non-breaking space', NARROW_NBSP],
+  ])('redacts a CNIC grouped with a %s', (_name, gap) => {
+    const result = redact(`cnic 42101${gap}1234567${gap}1 thanks`);
+    expect(result.text).toBe(`cnic ${REDACTED} thanks`);
+    expect(result.count).toBe(1);
+  });
+
+  it('leaves the rest of the text exactly as it was, odd characters included', () => {
+    // The match is found in a normalised copy and cut out of the original, so
+    // characters outside the match must survive unchanged.
+    const result = redact(`café${NBSP}bill 4242${NBSP}4242${NBSP}4242${NBSP}4242${NBSP}ok`);
+    expect(result.text).toBe(`café${NBSP}bill ${REDACTED}${NBSP}ok`);
+  });
+
+  it('still does not redact an ordinary number that happens to be long', () => {
+    // Order id: 16 digits, fails Luhn. The wider separator set must not turn
+    // this into a false positive.
+    expect(redact(`order 1234${NBSP}5678${NBSP}9012${NBSP}3450`).count).toBe(0);
+  });
+
+  it('does not join numbers across a line break', () => {
+    // A newline is not a separator. Four 4-digit numbers on four lines are four
+    // numbers, not a card.
+    expect(redact('4242\n4242\n4242\n4242').count).toBe(0);
+  });
+});

@@ -91,6 +91,30 @@ export default defineBackground(() => {
   });
 
   /**
+   * WHO IS ALLOWED TO ASK FOR WHAT.
+   *
+   * Today nothing hostile can reach this listener at all: the manifest declares
+   * no `externally_connectable`, so a web page cannot message us, and another
+   * extension would arrive on `onMessageExternal`, which we do not implement.
+   * That leaves our own content script and our own pages.
+   *
+   * The guard exists anyway, because the difference between those two is the
+   * whole privilege boundary of this extension. A content script runs inside
+   * someone else's page; the popup does not. `query` and `recent` return rows
+   * from every origin the user has ever typed on, and `deleteAll` destroys all
+   * of them — a content script has no business asking for any of that, and if a
+   * future change ever hands a page a way to send one message, this is the line
+   * that decides whether that is a bug or a breach.
+   *
+   * `sender.url` is set by Chrome and cannot be forged by the sender.
+   */
+  const OWN_PAGES = browser.runtime.getURL('/');
+
+  function fromOwnPage(sender: { url?: string | undefined }): boolean {
+    return sender.url?.startsWith(OWN_PAGES) === true;
+  }
+
+  /**
    * The only write path.
    *
    * Note the explicit sendResponse + `return true` rather than returning a
@@ -98,7 +122,7 @@ export default defineBackground(() => {
    * and `return true` is what tells it to keep the message channel open until
    * sendResponse is called.
    */
-  browser.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
     const msg = message as ExtensionMessage;
 
     if (msg?.kind === MESSAGE.capture) {
@@ -130,8 +154,17 @@ export default defineBackground(() => {
     if (msg?.kind === MESSAGE.candidates) {
       void (async () => {
         try {
-          const rows = await snapshotsForOrigin(msg.signals.origin);
-          sendResponse(rankFieldCandidates(msg.signals, rows, msg.limit ?? 5));
+          // The origin comes from Chrome's view of the sender, not from the
+          // message body. A content script asking about a frame it is not in
+          // would be asking for another site's drafts, and the answer to that
+          // is always no — whatever the message says.
+          const origin = sender.origin && sender.origin !== 'null'
+            ? sender.origin
+            : msg.signals.origin;
+          const signals = { ...msg.signals, origin };
+
+          const rows = await snapshotsForOrigin(origin);
+          sendResponse(rankFieldCandidates(signals, rows, msg.limit ?? 5));
         } catch (error) {
           console.error('[Draft Rescue] candidates failed', error);
           sendResponse([]);
@@ -143,6 +176,9 @@ export default defineBackground(() => {
     // Lets the content script's dev console ask what actually landed in the
     // database, without the user having to find the service worker's DevTools.
     if (msg?.kind === MESSAGE.recent) {
+      // Reaches across every origin, so it is for our own pages and for the
+      // content script's dev console — which does not exist in a release build.
+      if (!import.meta.env.DEV && !fromOwnPage(sender)) return false;
       void (async () => {
         try {
           sendResponse(await recentSnapshots(msg.limit ?? 20));
@@ -160,6 +196,7 @@ export default defineBackground(() => {
     // exactly one piece of code that knows the schema and keeps the byte
     // totals honest.
     if (msg?.kind === MESSAGE.query) {
+      if (!fromOwnPage(sender)) return false;
       void (async () => {
         try {
           const options: Parameters<typeof querySnapshots>[0] = {};
@@ -176,6 +213,7 @@ export default defineBackground(() => {
     }
 
     if (msg?.kind === MESSAGE.deleteOne) {
+      if (!fromOwnPage(sender)) return false;
       void (async () => {
         try {
           sendResponse(await deleteSnapshot(msg.id));
@@ -188,6 +226,7 @@ export default defineBackground(() => {
     }
 
     if (msg?.kind === MESSAGE.deleteSite) {
+      if (!fromOwnPage(sender)) return false;
       void (async () => {
         try {
           sendResponse(await deleteOrigin(msg.origin));
@@ -200,6 +239,7 @@ export default defineBackground(() => {
     }
 
     if (msg?.kind === MESSAGE.deleteAll) {
+      if (!fromOwnPage(sender)) return false;
       void (async () => {
         try {
           await deleteAll();
@@ -213,6 +253,7 @@ export default defineBackground(() => {
     }
 
     if (msg?.kind === MESSAGE.stats) {
+      if (!fromOwnPage(sender)) return false;
       void (async () => {
         try {
           sendResponse(await getStats());

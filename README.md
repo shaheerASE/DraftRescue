@@ -142,7 +142,7 @@ other extensions' pages. That is a hard browser restriction.
 
 | What | How |
 |---|---|
-| Pure logic | `npm test` — 411 unit tests |
+| Pure logic | `npm test` — 447 unit tests |
 | The whole capture path | `npm run smoke` — a real Chrome, a real database |
 | The restore engine | `npm run smoke:restore` — against real editor behaviour |
 | The inline pill | `npm run smoke:prompt` — placement, scrolling, clicking |

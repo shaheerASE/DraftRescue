@@ -86,7 +86,7 @@ One-time **$5 USD** registration fee, paid by card.
 ## Before you upload
 
 ```bash
-npm test              # 411 unit tests
+npm test              # 447 unit tests
 npm run build
 npm run check:offline # proves the privacy claim against the built files
 npm run smoke         # the whole capture path in a real browser

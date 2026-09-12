@@ -9,13 +9,28 @@
  * rule on the host page could make our prompt unreadable, or worse, our styles
  * could leak out and change their buttons.
  *
- * WHY `open` AND NOT `closed`
+ * WHY `open`, AND WHAT THAT COSTS
  * The isolation above comes from the shadow boundary itself and is identical in
- * both modes. `closed` only hides `.shadowRoot` from the page's JavaScript,
- * which stops nothing — a page that wanted to interfere could patch
- * `attachShadow` before we run. What `closed` does reliably is hide the pill
- * from our own DevTools inspector and from automated tests, making every
- * styling and positioning bug harder to diagnose, for no security gain.
+ * both modes. `open` differs in one way that matters: the page's own scripts
+ * can reach `host.shadowRoot` and read or poke at what is inside. We keep it
+ * because the browser test suite drives the pill through that boundary, and
+ * because `closed` is not the wall it looks like either — but we do not rely on
+ * it for anything, and nothing below assumes the page cannot see in.
+ *
+ * Two consequences are handled explicitly, because a hostile script on the page
+ * (an XSS, an ad tag, a compromised dependency) is a real thing and drafts are
+ * the one asset this extension holds:
+ *
+ *   1. Nothing may activate the restore except a person. A page calling
+ *      `pill.click()` would otherwise pull a draft the user never asked for
+ *      back into a field the page can read. Every activation is checked for
+ *      `isTrusted`, which only the browser can set.
+ *   2. The draft's text is never left sitting in the DOM. The preview tooltip
+ *      exists only while a real pointer is over the pill; before that there is
+ *      nothing in the shadow tree but the word "Restore" and an age.
+ *
+ * What a page can still learn is that a draft exists for the focused field and
+ * roughly how old it is. That is the price of showing an offer at all.
  */
 
 import { relativeTime } from '../shared/time';
@@ -136,6 +151,13 @@ export function createRestorePrompt(doc: Document = document): RestorePrompt {
 
   let field: Element | null = null;
   let activate: (() => void) | null = null;
+  /**
+   * The tooltip text, kept here in the isolated world rather than on the
+   * element. See point 2 in the note at the top of this file: an attribute is
+   * readable by the page the instant it is set, and the pill is shown without
+   * the user having done anything but focus a field.
+   */
+  let preview = '';
   let observer: ResizeObserver | null = null;
   let frame = 0;
 
@@ -178,9 +200,25 @@ export function createRestorePrompt(doc: Document = document): RestorePrompt {
     pill.addEventListener('click', (event) => {
       event.preventDefault();
       event.stopPropagation();
+      // `isTrusted` is set by the browser and cannot be forged from script, so
+      // this is what separates a person clicking from the page calling
+      // `.click()` on a button it found through the open shadow root. A real
+      // click and a keyboard Enter or Space on the focused pill are both
+      // trusted; everything a script can produce is not.
+      if (!event.isTrusted) return;
       const run = activate;
       hide();
       run?.();
+    });
+
+    // The preview appears only under a real pointer. `focus` is deliberately
+    // not a trigger: `element.focus()` from page script produces a *trusted*
+    // focus event, so it would hand the draft straight back.
+    pill.addEventListener('pointerenter', (event) => {
+      if (event.isTrusted && preview) pill?.setAttribute('title', preview);
+    });
+    pill.addEventListener('pointerleave', () => {
+      pill?.removeAttribute('title');
     });
 
     doc.documentElement.append(host);
@@ -287,9 +325,13 @@ export function createRestorePrompt(doc: Document = document): RestorePrompt {
     if (!field) return;
     stopTracking();
     setVisible(false);
-    if (pill) pill.style.transform = 'translate(-9999px, -9999px)';
+    if (pill) {
+      pill.style.transform = 'translate(-9999px, -9999px)';
+      pill.removeAttribute('title');
+    }
     field = null;
     activate = null;
+    preview = '';
   }
 
   return {
@@ -309,10 +351,13 @@ export function createRestorePrompt(doc: Document = document): RestorePrompt {
       // The tooltip shows WHAT will come back, not just when it was saved.
       // Without it the pill asks for a click on an unknown quantity, and the
       // first thing a person wonders on seeing the result is whether the
-      // extension picked the wrong draft.
-      const preview = text.replace(/\s+/g, ' ').trim();
-      const shown = preview.length > 180 ? `${preview.slice(0, 180)}\u2026` : preview;
-      pill.title = `Draft Rescue \u2014 saved ${when}, ${text.length} characters\n\n${shown}`;
+      // extension picked the wrong draft. It is composed now and shown later,
+      // on hover — putting it on the element here would publish the draft to
+      // the page before the user has done anything at all.
+      const flat = text.replace(/\s+/g, ' ').trim();
+      const shown = flat.length > 180 ? `${flat.slice(0, 180)}\u2026` : flat;
+      preview = `Draft Rescue \u2014 saved ${when}, ${text.length} characters\n\n${shown}`;
+      pill.removeAttribute('title');
 
       startTracking();
       // Measure after the label is in place, so the pill's width is final.
