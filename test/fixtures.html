@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Draft Rescue — test fixtures</title>
+    <style>
+      body {
+        font: 14px/1.5 system-ui, sans-serif;
+        margin: 0;
+        padding: 24px;
+        max-width: 760px;
+      }
+      section {
+        border: 1px solid #ddd;
+        border-radius: 8px;
+        padding: 12px 16px;
+        margin-bottom: 16px;
+      }
+      h2 {
+        font-size: 13px;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        color: #555;
+        margin: 0 0 8px;
+      }
+      .expect {
+        font-size: 12px;
+        color: #777;
+        margin: 0 0 8px;
+      }
+      .capture {
+        border-left: 3px solid #2e7d32;
+        padding-left: 13px;
+      }
+      .refuse {
+        border-left: 3px solid #c62828;
+        padding-left: 13px;
+      }
+      textarea,
+      input {
+        width: 100%;
+        box-sizing: border-box;
+        font: inherit;
+        padding: 6px 8px;
+      }
+      [contenteditable] {
+        border: 1px solid #ccc;
+        border-radius: 4px;
+        padding: 6px 8px;
+        min-height: 48px;
+      }
+      iframe {
+        width: 100%;
+        height: 130px;
+        border: 1px solid #ccc;
+        border-radius: 4px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Draft Rescue test fixtures</h1>
+    <p>
+      Green = must be captured. Red = must never be captured. Phase 5 expands
+      this page and adds the manual checklist for real sites.
+    </p>
+
+    <section class="capture">
+      <h2>Plain textarea</h2>
+      <p class="expect">Expect: captured.</p>
+      <label for="ta">Cover letter</label>
+      <textarea id="ta" name="coverLetter" rows="3"></textarea>
+    </section>
+
+    <section class="capture">
+      <h2>Plain text input</h2>
+      <p class="expect">Expect: captured.</p>
+      <input id="ti" type="text" name="postTitle" placeholder="Title" />
+    </section>
+
+    <section class="capture">
+      <h2>contenteditable</h2>
+      <p class="expect">
+        Expect: captured, with sanitised HTML stored alongside the plain text.
+        This is the case the alternatives do not handle.
+      </p>
+      <div id="ce" contenteditable="true" role="textbox" aria-label="Message body"></div>
+    </section>
+
+    <section class="capture">
+      <h2>Input inside an OPEN shadow root</h2>
+      <p class="expect">
+        Expect: captured. Only reachable because we resolve the event target
+        through composedPath().
+      </p>
+      <div id="open-host"></div>
+    </section>
+
+    <section class="refuse">
+      <h2>Input inside a CLOSED shadow root</h2>
+      <p class="expect">
+        Expect: NOT captured. Known limitation — a closed root is invisible to
+        every extension by design. Documented, not worked around.
+      </p>
+      <div id="closed-host"></div>
+    </section>
+
+    <section class="capture">
+      <h2>Same-origin iframe</h2>
+      <p class="expect">
+        Expect: captured. A separate copy of the content script runs in the
+        frame and messages the service worker itself.
+      </p>
+      <iframe src="./frame.html" title="Same-origin frame"></iframe>
+    </section>
+
+    <section class="refuse">
+      <h2>Password field</h2>
+      <p class="expect">Expect: NOT captured, by type.</p>
+      <label for="pw">Password</label>
+      <input id="pw" type="password" name="password" autocomplete="current-password" />
+    </section>
+
+    <section class="refuse">
+      <h2>Password field after a show/hide toggle</h2>
+      <p class="expect">
+        Expect: NOT captured, even once its type becomes "text". Type into it,
+        then press the button, then type more.
+      </p>
+      <input id="pw-toggle" type="password" name="secretPhrase" />
+      <button id="toggle" type="button">Show</button>
+    </section>
+
+    <section class="refuse">
+      <h2>Card number field</h2>
+      <p class="expect">Expect: NOT captured, by name and by autocomplete.</p>
+      <input id="cc" type="text" name="cardnumber" autocomplete="cc-number" inputmode="numeric" />
+    </section>
+
+    <section class="refuse">
+      <h2>Vague field inside a checkout form</h2>
+      <p class="expect">Expect: NOT captured — the form gives it away.</p>
+      <form action="/checkout/pay" id="checkout-form">
+        <input id="vague" type="text" name="number" />
+      </form>
+    </section>
+
+    <section class="capture">
+      <h2>Ordinary field containing a card number</h2>
+      <p class="expect">
+        Expect: captured, but with the card number replaced by [redacted]. The
+        second safety layer, independent of what the field is called.
+      </p>
+      <textarea id="leaky" name="comment" rows="3"></textarea>
+    </section>
+
+    <section class="refuse">
+      <h2>Text below the minimum length</h2>
+      <p class="expect">Expect: NOT stored. Under 15 characters is not a draft.</p>
+      <input id="short" type="text" name="note" />
+    </section>
+
+    <script>
+      // Open shadow root: our composedPath walk can see inside this.
+      const openRoot = document.getElementById('open-host').attachShadow({ mode: 'open' });
+      openRoot.innerHTML =
+        '<label for="si">Shadow note</label>' +
+        '<textarea id="si" name="shadowNote" rows="2" style="width:100%"></textarea>';
+
+      // Closed shadow root: nothing outside can reach into this, us included.
+      const closedRoot = document.getElementById('closed-host').attachShadow({ mode: 'closed' });
+      closedRoot.innerHTML =
+        '<label for="ci">Closed note</label>' +
+        '<textarea id="ci" name="closedNote" rows="2" style="width:100%"></textarea>';
+      // Exposed only so the smoke test can type into it. A real site would not
+      // do this, which is exactly why the case is unsupported.
+      window.__closedRoot = closedRoot;
+
+      document.getElementById('toggle').addEventListener('click', () => {
+        const field = document.getElementById('pw-toggle');
+        const showing = field.type === 'text';
+        field.type = showing ? 'password' : 'text';
+        document.getElementById('toggle').textContent = showing ? 'Show' : 'Hide';
+      });
+    </script>
+  </body>
+</html>

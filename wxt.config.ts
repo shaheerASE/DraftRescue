@@ -26,10 +26,17 @@ export default defineConfig({
     // case". Every permission has to be justified in writing at store review,
     // and each one widens the blast radius if we ever ship a bug.
     //
-    // Phase 0 needs none. The content script's `matches` (see
-    // entrypoints/content.ts) is what grants page access, and that is declared
-    // there rather than as a blanket `host_permissions` entry.
-    permissions: [],
+    // The content script's `matches` (see entrypoints/content.ts) is what
+    // grants page access, and it is declared there rather than as a blanket
+    // `host_permissions` entry.
+    permissions: [
+      // Phase 1: settings the content script must read on every page. Drafts do
+      // NOT go here — those are in IndexedDB, which needs no permission at all.
+      'storage',
+      // Phase 1: the retention purge. A service worker is killed after ~30
+      // seconds idle, so setInterval cannot run a 6-hourly job; alarms wake it.
+      'alarms',
+    ],
 
     action: {
       default_title: 'Draft Rescue',

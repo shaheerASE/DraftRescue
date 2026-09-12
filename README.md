@@ -7,8 +7,8 @@ failed form submit does not cost you an hour of writing.
 all — that is a design constraint, not an aspiration, and it is checkable from
 the built bundle.
 
-> Status: **Phase 0 — scaffold**. It builds and loads. It does not capture
-> anything yet.
+> Status: **Phase 1 — capture core**. It captures, filters and stores. There is
+> no UI yet: drafts are visible only in DevTools. Restore lands in Phase 2.
 
 ---
 
@@ -36,9 +36,12 @@ correctly is the whole point of this project.
 | `npm run build` | Production build into `.output/chrome-mv3/` |
 | `npm run compile` | Typecheck only (`tsc --noEmit`) |
 | `npm test` | Run the Vitest suite |
+| `npm run smoke` | End-to-end test: loads the built extension in a real Chrome |
 | `npm run size` | Check the content script against its 20 KB gzipped budget |
 | `npm run icons` | Regenerate the placeholder icons |
 | `npm run zip` | Package for Chrome Web Store upload |
+
+`npm run smoke` needs a browser the first time: `npx playwright install chromium`.
 
 ---
 
@@ -109,18 +112,160 @@ Open any normal website. Open the page's own DevTools (F12) → Console. You
 should see:
 
 ```
-[Draft Rescue] content script attached { url: "...", isTopFrame: true }
+[Draft Rescue] capturing { url: "...", isTopFrame: true }
 ```
 
 Then open a page that contains iframes (any page with an embedded YouTube video
 works). You should see **several** of those lines — one per frame, most with
-`isTopFrame: false`. That proves `all_frames: true` is doing its job, which is
-what will let us capture text inside embedded editors later.
+`isTopFrame: false`. That proves `all_frames: true` is doing its job.
 
-If you see the line on `chrome://extensions` — you will not, and should not.
-Chrome blocks content scripts on its own pages, the Web Store, and other
-extensions' pages. That is a hard browser restriction, not something we can
-configure.
+These log lines only appear in a **dev build** (`npm run dev`). The production
+build is silent on purpose — it is not our place to write to other people's
+consoles.
+
+If you look for the line on `chrome://extensions` — you will not find it, and
+should not. Chrome blocks content scripts on its own pages, the Web Store, and
+other extensions' pages. That is a hard browser restriction.
+
+---
+
+## Verifying Phase 1
+
+Run `npm run dev` and load `.output/chrome-mv3-dev`.
+
+**The automated check, first.** This is the honest one, and it takes 30 seconds:
+
+```bash
+npm test        # 292 unit tests: the capture gate, redaction, keys, storage
+npm run build
+npm run smoke   # loads the real extension in a real Chrome and types into it
+```
+
+`npm run smoke` opens the fixture page, types into every kind of field, and then
+reads the service worker's IndexedDB to check what actually landed. It asserts
+both directions: the drafts that must be there, and the passwords and card
+numbers that must not.
+
+**Then check it by hand, because that is what you will trust.**
+
+1. Go to any site with a big text box — Reddit's comment box, a Gmail draft, a
+   LinkedIn post box.
+2. Type at least 15 characters. Wait a second (there is an 800ms debounce).
+3. Open DevTools → **Application** tab → **Storage** → **IndexedDB**.
+
+Here is the part that catches people out: you are looking at **the page's**
+storage, and our database is not there. It is in the *extension's* origin.
+
+To see it: go to `chrome://extensions` → click the **service worker** link under
+Draft Rescue → in that DevTools window, **Application** → **IndexedDB** →
+`draft-rescue` → `snapshots`.
+
+You should see a row per field, with `text`, `signals`, `createdAt` and a
+`fieldKey`. Keep typing, change the text, wait — a second row appears with the
+same `fieldKey`. That is version history.
+
+**Now check the refusals, which matter more.**
+
+Open `test/fixtures.html` (run `npx http-server test -p 8080` and visit
+`http://localhost:8080/fixtures.html`). Every section is labelled green for
+"must be captured" or red for "must never be captured". Type into all of them,
+then look at the `snapshots` store. Nothing you typed into a red section should
+be there. The comment box containing a card number should be there, with the
+number replaced by `[redacted]`.
+
+**A console helper, in dev builds.** In the page's DevTools console, switch the
+context dropdown at the top of the Console from `top` to the Draft Rescue entry
+— content scripts run in their own isolated world, so this is how you reach
+ours. Then:
+
+```js
+__draftRescue.stats                                  // captured / refused counts
+__draftRescue.explain(document.querySelector('#some-field'))  // why a field was refused
+```
+
+`explain` returns the actual decision, e.g.
+`{ capture: false, reason: 'identifier', detail: 'cardnumber' }`. If a site is
+not being captured and you want to know why, that is the tool.
+
+---
+
+## How it fits together
+
+```
+you type
+   │
+   ▼
+CONTENT SCRIPT  (inside the web page)
+   one `input` listener on document, capture phase
+   → composedPath() to find the real field, even inside a shadow root
+   → shouldCapture() — refuse passwords, cards, checkout forms, blocked sites
+   → 800ms debounce per field, flushed on visibilitychange / pagehide
+   → redact() — Luhn-checked card numbers and CNICs replaced
+   → sanitizeHtml() for contenteditable
+   │
+   │  chrome.runtime.sendMessage  (text only; no network, ever)
+   ▼
+SERVICE WORKER  (the extension's own origin)
+   the single writer
+   → IndexedDB: 10 versions per field, 7-day retention, 50 MB cap
+   → chrome.alarms wakes it every 6 hours to purge
+```
+
+Two rules that explain most of the design:
+
+**The content script never stores anything.** IndexedDB is scoped per origin, so
+a content script writing to it would write to *that website's* database — siloed
+per site, and wiped whenever the user clears site data. Only the service worker
+has our origin.
+
+**The service worker has no DOM.** No `document`, no `DOMParser`. That is why
+HTML sanitising happens in the content script rather than next to the code that
+writes it.
+
+---
+
+## What is never captured
+
+Built as a tested gate (`src/capture/should-capture.ts`, 157 tests) that every
+field passes through before anything is stored:
+
+- `input[type="password"]` — and the element is remembered, so a "show password"
+  toggle that flips it to `type="text"` does not open a window
+- `autocomplete` of `current-password`, `new-password`, `one-time-code`, or
+  anything starting with `cc-`
+- A name, id, placeholder, aria-label, title or `<label>` that looks sensitive
+- Any field inside a form whose action, id or name looks like a checkout
+- Any frame on a payment processor's domain (Stripe, PayPal, Adyen, Razorpay,
+  JazzCash and others) — we are injected into cross-origin iframes, so we do run
+  inside hosted card fields
+- Sites on your blocklist
+- Incognito windows, unless explicitly enabled twice over (see below)
+
+Then, independently, a **redaction pass runs on the text itself**: anything
+Luhn-valid and 13–19 digits long, and anything CNIC-shaped, is replaced with
+`[redacted]` before it is stored. This is what catches a card number pasted into
+an ordinary comment box, which no amount of attribute-checking would.
+
+### A note on the sensitive-word list
+
+The obvious implementation is one regex of substrings —
+`/pass|card|pin|cvv|.../i`. It is wrong, and quietly so: `pin` is inside
+*shipping*, *typing* and *opinion*; `card` is inside *flashcard* and
+*wildcard*; `pass` is inside *passenger* and *compass*. A field named
+`shippingAddress` or `card-description` would be silently refused, and the user
+would only find out when they needed the draft back.
+
+So matching happens at two levels instead — normalised substrings for long
+unambiguous patterns, whole-word tokens for short ambiguous ones. See
+`src/capture/patterns.ts`. The test suite lists every real-world word this
+distinction saves.
+
+### Incognito
+
+Chrome does not run extensions in incognito at all unless you tick "Allow in
+incognito" on `chrome://extensions` — that is the browser's switch, not ours,
+and we cannot grant it. Our own setting is a second refusal on top, so capturing
+in a private window takes two separate deliberate acts.
 
 ---
 
@@ -158,6 +303,9 @@ Documented as we hit them, not hidden:
 - **Sandboxed iframes.** An iframe with a `sandbox` attribute that omits
   `allow-same-origin` gets an opaque origin; we are injected but have no useful
   storage identity there.
+- **Text below 15 characters** is not stored. It is not a draft.
+- **No restore yet.** Phase 1 captures only. Getting text back arrives in
+  Phase 2 (engine) and Phase 3 (the inline prompt).
 - **Cross-origin iframes are *not* a limitation.** Chrome injects a separate
   copy of the content script into each frame, so we capture inside them
   normally. What is impossible — and unnecessary for us — is reaching into a
