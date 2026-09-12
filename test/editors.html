@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Draft Rescue — editor behaviour fixtures</title>
+    <style>
+      body {
+        font: 14px/1.5 system-ui, sans-serif;
+        margin: 0;
+        padding: 24px;
+        max-width: 760px;
+      }
+      section {
+        border: 1px solid #ddd;
+        border-radius: 8px;
+        padding: 12px 16px;
+        margin-bottom: 16px;
+      }
+      h2 {
+        font-size: 13px;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        color: #555;
+        margin: 0 0 8px;
+      }
+      .state {
+        font-family: ui-monospace, monospace;
+        background: #f4f4f8;
+        padding: 6px 8px;
+        border-radius: 4px;
+        white-space: pre-wrap;
+        min-height: 20px;
+      }
+      textarea,
+      [contenteditable] {
+        width: 100%;
+        box-sizing: border-box;
+        font: inherit;
+        border: 1px solid #ccc;
+        border-radius: 4px;
+        padding: 6px 8px;
+        min-height: 60px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Editor behaviour fixtures</h1>
+    <p>
+      These reproduce the two ways a naive restore fails. Both failures look
+      like success for a second or two, which is what makes them worth a test.
+    </p>
+
+    <section>
+      <h2>1. A framework-controlled input</h2>
+      <p>
+        Reproduces React's value tracking: a getter/setter pair on the element
+        <em>instance</em>, plus a private record of the last value the framework
+        knows about. An <code>input</code> event whose value equals that record
+        is treated as "nothing changed" and dropped.
+      </p>
+      <textarea id="controlled" name="controlledDraft"></textarea>
+      <p>Framework state: <span class="state" id="controlled-state"></span></p>
+    </section>
+
+    <section>
+      <h2>2. A model-driven rich editor</h2>
+      <p>
+        Reproduces how Lexical, ProseMirror, Slate and Draft.js work: the editor
+        keeps its own document model, updates it from
+        <code>beforeinput</code>/<code>input</code>, and reconciles the DOM from
+        the model whenever it re-renders. A DOM write it never saw is discarded
+        at the next render.
+      </p>
+      <div id="rich" contenteditable="true" role="textbox" aria-label="Rich draft"></div>
+      <p>Editor model: <span class="state" id="rich-state"></span></p>
+    </section>
+
+    <section>
+      <h2>3. A plain contenteditable</h2>
+      <p>
+        No model, no framework. Here to check one property in isolation: a
+        restore has to be undoable with Ctrl+Z. The editors above cannot show
+        this, because their re-render writes to the DOM directly and that write
+        is invisible to the browser's own undo stack.
+      </p>
+      <div id="plain" contenteditable="true" role="textbox" aria-label="Plain draft"></div>
+    </section>
+
+    <script>
+      // --- 1. Framework-controlled input ------------------------------------
+      (function () {
+        const el = document.getElementById('controlled');
+        const out = document.getElementById('controlled-state');
+
+        const descriptor = Object.getOwnPropertyDescriptor(
+          Object.getPrototypeOf(el),
+          'value',
+        );
+
+        // The framework shadows the prototype's accessor on the instance and
+        // remembers what it last saw.
+        let known = String(el.value);
+        Object.defineProperty(el, 'value', {
+          configurable: true,
+          get() {
+            return descriptor.get.call(this);
+          },
+          set(next) {
+            known = String(next);
+            descriptor.set.call(this, next);
+          },
+        });
+
+        // Its onChange equivalent: ignore any event where the field agrees with
+        // what it already believes.
+        let state = '';
+        el.addEventListener('input', () => {
+          const current = descriptor.get.call(el);
+          if (known === current) return; // dropped, exactly as React would
+          known = current;
+          state = current;
+          out.textContent = state;
+        });
+
+        window.__controlled = {
+          get state() {
+            return state;
+          },
+        };
+      })();
+
+      // --- 2. Model-driven rich editor ---------------------------------------
+      (function () {
+        const el = document.getElementById('rich');
+        const out = document.getElementById('rich-state');
+
+        let model = '';
+
+        // The editor learns about changes ONLY through editing events. This is
+        // the whole point: a DOM write that does not produce one is invisible
+        // to the model, and therefore temporary.
+        el.addEventListener('input', () => {
+          model = el.innerText;
+          out.textContent = model;
+        });
+
+        window.__rich = {
+          get model() {
+            return model;
+          },
+          /** What the editor does on any state update: DOM follows the model. */
+          rerender() {
+            el.textContent = model;
+            out.textContent = model;
+          },
+        };
+      })();
+    </script>
+  </body>
+</html>

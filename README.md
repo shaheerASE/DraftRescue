@@ -7,8 +7,9 @@ failed form submit does not cost you an hour of writing.
 all — that is a design constraint, not an aspiration, and it is checkable from
 the built bundle.
 
-> Status: **Phase 1 — capture core**. It captures, filters and stores. There is
-> no UI yet: drafts are visible only in DevTools. Restore lands in Phase 2.
+> Status: **Phase 2 — matching and restore**. It captures, matches a live field
+> against stored drafts, and can put text back. There is still no UI: restore is
+> driven from the console. The inline prompt lands in Phase 3.
 
 ---
 
@@ -39,6 +40,7 @@ correctly is the whole point of this project.
 | `npm run smoke` | End-to-end test: loads the built extension in a real Chrome |
 | `npm run build:dev` | Production-style build with the dev diagnostics left in |
 | `npm run smoke:dev` | Checks the dev diagnostics report real problems and only those |
+| `npm run smoke:restore` | Checks restore works against real editor behaviour in Chrome |
 | `npm run size` | Check the content script against its 20 KB gzipped budget |
 | `npm run icons` | Regenerate the placeholder icons |
 | `npm run zip` | Package for Chrome Web Store upload |
@@ -207,9 +209,11 @@ wolf is worse than no tool.
 Three commands, in that same console context:
 
 ```js
-__draftRescue.dump()     // table of what is ACTUALLY in the database
-__draftRescue.stats      // captured / refused / unresolved counts
-__draftRescue.probe()    // click into the field first, then run this
+__draftRescue.dump()        // table of what is ACTUALLY in the database
+__draftRescue.stats         // captured / refused / unresolved counts
+__draftRescue.probe()       // click into the field first, then run this
+__draftRescue.candidates()  // which stored drafts match this field, and how well
+__draftRescue.restore()     // put the best match back into the focused field
 ```
 
 `probe()` is the one to reach for. Click into the field that is not working, run
@@ -270,9 +274,15 @@ SERVICE WORKER  (the extension's own origin)
    the single writer
    → IndexedDB: 10 versions per field, 7-day retention, 50 MB cap
    → chrome.alarms wakes it every 6 hours to purge
+   → scores a live field against stored drafts and ranks candidates
+   │
+   │  ranked candidates
+   ▼
+CONTENT SCRIPT
+   → restoreInto() puts a draft back, by a route the page actually respects
 ```
 
-Two rules that explain most of the design:
+Three rules that explain most of the design:
 
 **The content script never stores anything.** IndexedDB is scoped per origin, so
 a content script writing to it would write to *that website's* database — siloed
@@ -282,6 +292,73 @@ has our origin.
 **The service worker has no DOM.** No `document`, no `DOMParser`. That is why
 HTML sanitising happens in the content script rather than next to the code that
 writes it.
+
+**Scoring runs in the service worker, restoring runs in the content script.**
+Scoring needs no DOM and the content script pays for every byte on every page
+the user visits. Restoring needs the live element, so it has no choice.
+
+---
+
+## Matching: is this the same field as yesterday?
+
+`src/match/score.ts`. Every stored fingerprint is scored against the live field
+and the best one wins, if it is good enough. The asymmetry that drives the
+design:
+
+- **A missed match** costs an inline prompt. The draft is still in the popup,
+  searchable. Annoying, recoverable.
+- **A wrong match** offers someone text from a different box — possibly a
+  different conversation. Restoring is one click, and the click comes before
+  they have read what it is.
+
+So it leans towards refusing. Signals are weighted by how well they survive a
+redesign — `fieldName` 30, `labelText` and `ariaLabel` 26, `domPath` only 12,
+because a site can rewrite its markup completely and still call the box "Cover
+letter". Three rules do most of the work:
+
+- A name or label that **actively disagrees** caps the score at 0.2. Two
+  textareas side by side named `coverLetter` and `clientQuestion` must never
+  match, however alike everything else is.
+- A **different page** multiplies by 0.35, so even a perfect signal match cannot
+  cross the threshold from the wrong page. Paths are normalised first, so
+  `/proposals/123` and `/proposals/456` count as the same page.
+- A match must be **corroborated** by something that identifies *this* field. An
+  early version scored two unrelated anonymous fields at 0.625 on `tagName` +
+  `editorKind` alone — signals true of every text box on the site. Those can
+  contribute, but they can no longer carry a match.
+
+---
+
+## Restoring: harder than setting .value
+
+`src/restore/restore.ts`. Two failure modes, both of which look like success for
+a second or two.
+
+**A framework-controlled input.** The obvious code is `el.value = text` then
+dispatch an `input` event. On a plain page that works. On a React-controlled
+input it silently does nothing: React installs its own setter on the element
+*instance* and keeps a private record of the last value it knows. Assigning
+through that setter updates the record too, so by the time the event arrives
+React sees no change and never calls `onChange`. The box looks right, the app
+still holds the old text, and the form submits the old value.
+
+The fix is to take the `value` setter off the **prototype**, bypassing the
+instance property. The field changes, React's record is left stale, and the
+event that follows shows a genuine difference.
+
+**A model-driven rich editor.** Lexical, ProseMirror, Slate, Draft.js and Quill
+keep their own document model and reconcile the DOM against it. Writing
+`innerHTML` changes the DOM without telling the model, so the text appears and
+then vanishes on the editor's next render.
+
+The fix is `document.execCommand('insertText')` — deprecated, and still correct.
+It goes through the browser's own editing pipeline, firing the same
+`beforeinput`/`input` events a real keystroke fires, which is exactly what those
+editors listen for. It also joins the native undo stack, so Ctrl+Z works.
+
+Both failures and both fixes are asserted in a real Chrome by
+`npm run smoke:restore`, against fixtures in `test/editors.html` that reproduce
+how the real editors behave.
 
 ---
 

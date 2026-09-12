@@ -68,12 +68,14 @@ export const MESSAGE = {
   capture: 'draft-rescue/capture',
   stats: 'draft-rescue/stats',
   recent: 'draft-rescue/recent',
+  candidates: 'draft-rescue/candidates',
 } as const;
 
 export type ExtensionMessage =
   | { kind: typeof MESSAGE.capture; payload: CapturePayload }
   | { kind: typeof MESSAGE.stats }
-  | { kind: typeof MESSAGE.recent; limit?: number };
+  | { kind: typeof MESSAGE.recent; limit?: number }
+  | { kind: typeof MESSAGE.candidates; signals: FieldSignals; limit?: number };
 
 export interface StorageStats {
   snapshots: number;

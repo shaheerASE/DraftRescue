@@ -10,6 +10,8 @@ import {
   type EditorKind,
 } from '../src/capture/should-capture';
 import { DEFAULT_SETTINGS, onSettingsChanged, readSettings, type Settings } from '../src/shared/settings';
+import { MATCH_THRESHOLD, type FieldCandidate } from '../src/match/score';
+import { restoreInto } from '../src/restore/restore';
 import { MESSAGE, type CapturePayload } from '../src/shared/types';
 
 /**
@@ -107,15 +109,6 @@ export default defineContentScript({
     }
 
     /**
-     * An input event we could not trace back to a field at all.
-     *
-     * Almost always a closed shadow root: when a site calls
-     * attachShadow({ mode: 'closed' }), composedPath() omits everything inside
-     * it, so the innermost node we can see is the custom element wrapping it.
-     * Nothing can reach in — not us, not any extension. Worth saying out loud
-     * rather than leaving as an unexplained silence.
-     */
-    /**
      * Is this element a component that merely re-announces a field we can
      * already see inside it?
      *
@@ -135,6 +128,15 @@ export default defineContentScript({
       return root.querySelector('textarea, input, [contenteditable]') !== null;
     }
 
+    /**
+     * An input event we could not trace back to a field at all.
+     *
+     * Almost always a closed shadow root: when a site calls
+     * attachShadow({ mode: 'closed' }), composedPath() omits everything inside
+     * it, so the innermost node we can see is the element wrapping it. Nothing
+     * can reach in — not us, not any extension. Worth saying out loud rather
+     * than leaving as an unexplained silence.
+     */
     function reportUnresolved(path: readonly EventTarget[]): void {
       const first = path[0] as Element | undefined;
       if (!first || typeof first.tagName !== 'string') return;
@@ -384,6 +386,74 @@ export default defineContentScript({
             })),
           );
           return rows;
+        },
+
+        /**
+         * Which stored drafts might belong to this field, and how sure are we?
+         *
+         * The scoring itself runs in the service worker — it needs no DOM, and
+         * keeping it out of here keeps the content script small.
+         */
+        async candidates(target?: Element) {
+          const el = target ?? deepActiveElement();
+          if (!el) return 'Nothing is focused. Click into the field first.';
+
+          const kind = editorKindOf(el);
+          if (!kind) return `${describe(el)} is not a field we handle.`;
+
+          const ranked: FieldCandidate[] = await browser.runtime.sendMessage({
+            kind: MESSAGE.candidates,
+            signals: buildSignals(el, kind),
+          });
+
+          if (!Array.isArray(ranked) || ranked.length === 0) {
+            console.log('[Draft Rescue] no stored drafts for this site');
+            return [];
+          }
+
+          console.table(
+            ranked.map((c, i) => ({
+              '#': i,
+              score: c.score.toFixed(2),
+              wouldPrompt: c.score >= MATCH_THRESHOLD ? 'yes' : 'no',
+              versions: c.versions.length,
+              newest: c.versions[0]?.text.slice(0, 50),
+            })),
+          );
+          for (const [i, c] of ranked.entries()) {
+            console.log(`  #${i} because: ${c.reasons.join('; ')}`);
+          }
+          return ranked;
+        },
+
+        /**
+         * Put a stored draft back into the focused field.
+         *
+         * `candidate` indexes the list from candidates(); `version` indexes that
+         * field's history, 0 being the newest — so restore(0, 1) is "the box I
+         * am in, as it was one save ago".
+         */
+        async restore(candidate = 0, version = 0) {
+          const el = deepActiveElement();
+          if (!el) return 'Nothing is focused. Click into the field first.';
+
+          const kind = editorKindOf(el);
+          if (!kind) return `${describe(el)} is not a field we handle.`;
+
+          const ranked: FieldCandidate[] = await browser.runtime.sendMessage({
+            kind: MESSAGE.candidates,
+            signals: buildSignals(el, kind),
+          });
+          const snapshot = ranked?.[candidate]?.versions[version];
+          if (!snapshot) return 'No such candidate. Run candidates() first.';
+
+          const result = restoreInto(el, kind, snapshot.text);
+          console.log('[Draft Rescue] restore', {
+            ...result,
+            chars: snapshot.text.length,
+            saved: new Date(snapshot.createdAt).toLocaleString(),
+          });
+          return result;
         },
 
         explain(el: Element) {

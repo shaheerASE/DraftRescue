@@ -187,6 +187,19 @@ export async function recentSnapshots(limit = 50): Promise<Snapshot[]> {
   return rows;
 }
 
+/**
+ * Every snapshot stored for one site.
+ *
+ * Scoped by origin because that is the one gate the scorer applies before
+ * anything else — there is no such thing as a partial match across two sites,
+ * so there is no point loading them.
+ */
+export async function snapshotsForOrigin(origin: string, limit = 500): Promise<Snapshot[]> {
+  const db = await getDb();
+  const rows = await db.getAllFromIndex('snapshots', 'by-origin', IDBKeyRange.only(origin));
+  return rows.slice(-limit);
+}
+
 export async function getStats(): Promise<StorageStats> {
   const db = await getDb();
   const meta = await db.get('meta', STATS_KEY);

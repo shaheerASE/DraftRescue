@@ -2,7 +2,14 @@ import { defineBackground } from 'wxt/utils/define-background';
 import { browser } from 'wxt/browser';
 import { readSettings } from '../src/shared/settings';
 import { MESSAGE, type ExtensionMessage } from '../src/shared/types';
-import { getStats, purgeExpired, recentSnapshots, writeSnapshot } from '../src/storage/snapshots';
+import { rankFieldCandidates } from '../src/match/score';
+import {
+  getStats,
+  purgeExpired,
+  recentSnapshots,
+  snapshotsForOrigin,
+  writeSnapshot,
+} from '../src/storage/snapshots';
 
 /**
  * THE SERVICE WORKER (Manifest V3 "background").
@@ -108,6 +115,22 @@ export default defineBackground(() => {
         } catch (error) {
           console.error('[Draft Rescue] write failed', error);
           sendResponse({ stored: false, reason: 'error' });
+        }
+      })();
+      return true;
+    }
+
+    // "What drafts might belong to this field?" Scoring happens HERE, not in
+    // the content script: it needs no DOM, and the content script has a byte
+    // budget that is spent on every page the user visits.
+    if (msg?.kind === MESSAGE.candidates) {
+      void (async () => {
+        try {
+          const rows = await snapshotsForOrigin(msg.signals.origin);
+          sendResponse(rankFieldCandidates(msg.signals, rows, msg.limit ?? 5));
+        } catch (error) {
+          console.error('[Draft Rescue] candidates failed', error);
+          sendResponse([]);
         }
       })();
       return true;
