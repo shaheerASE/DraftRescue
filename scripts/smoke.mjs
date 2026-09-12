@@ -118,6 +118,13 @@ await page.locator('#open-host textarea').pressSequentially(
   { delay: 1 },
 );
 
+// The Reddit-shaped composer. Click the editable host (what a user clicks);
+// the caret lands in the nested span, so the typed-into node is still several
+// elements below the element carrying the contenteditable attribute.
+// Playwright pierces open shadow roots with ordinary selectors.
+await page.locator('#reddit-like [contenteditable]').click();
+await page.keyboard.type('A comment typed into a Reddit-shaped Lexical composer.');
+
 // Closed shadow root: reached only via the escape hatch the fixture exposes.
 await page.evaluate(() => {
   const field = window.__closedRoot.getElementById('ci');
@@ -181,6 +188,19 @@ check('text input draft stored', has('A blog post title'));
 check('contenteditable draft stored', has('rich text draft'));
 check('open shadow root draft stored', has('open shadow root'));
 check('same-origin iframe draft stored', has('same-origin iframe'));
+check('Reddit-shaped composer draft stored', has('Reddit-shaped Lexical composer'));
+
+const composer = rows.find((r) => r.text.includes('Reddit-shaped Lexical composer'));
+check(
+  'composer resolved to the contenteditable host, not an inner span',
+  composer?.signals?.tagName === 'DIV' && composer?.signals?.editorKind === 'contenteditable',
+  `got tagName=${composer?.signals?.tagName} kind=${composer?.signals?.editorKind}`,
+);
+check(
+  'composer identified by its aria-label',
+  composer?.signals?.ariaLabel === 'Comment',
+  `got ${JSON.stringify(composer?.signals?.ariaLabel)}`,
+);
 
 const ce = rows.find((r) => r.text.includes('rich text draft'));
 check('contenteditable row carries its editorKind', ce?.signals?.editorKind === 'contenteditable');
@@ -216,8 +236,8 @@ check('redaction was counted on the row', (leaky?.redactions ?? 0) > 0);
 // something is being stored that should not be, whatever the checks above say.
 const distinctFields = new Set(rows.map((r) => r.fieldKey));
 check(
-  'exactly six distinct fields captured, and no others',
-  distinctFields.size === 6,
+  'exactly seven distinct fields captured, and no others',
+  distinctFields.size === 7,
   `got ${distinctFields.size}:\n        ${texts.map((t) => JSON.stringify(t.slice(0, 60))).join('\n        ')}`,
 );
 

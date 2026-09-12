@@ -95,6 +95,16 @@
       <div id="open-host"></div>
     </section>
 
+    <section class="capture">
+      <h2>Reddit-shaped composer (Lexical inside a custom element)</h2>
+      <p class="expect">
+        Expect: captured. Modern editors nest the text several elements deep
+        inside a web component, so the event target is never the editable host.
+        This is the shape that has to keep working.
+      </p>
+      <shreddit-composer-fixture id="reddit-like"></shreddit-composer-fixture>
+    </section>
+
     <section class="refuse">
       <h2>Input inside a CLOSED shadow root</h2>
       <p class="expect">
@@ -165,6 +175,21 @@
       openRoot.innerHTML =
         '<label for="si">Shadow note</label>' +
         '<textarea id="si" name="shadowNote" rows="2" style="width:100%"></textarea>';
+
+      // A web component holding a Lexical-shaped editor, the way Reddit,
+      // LinkedIn and Jira build their comment boxes: an open shadow root, a
+      // contenteditable host, and the text itself several elements further in
+      // so the typed-into node is never the element carrying the attribute.
+      const composerRoot = document
+        .getElementById('reddit-like')
+        .attachShadow({ mode: 'open' });
+      composerRoot.innerHTML =
+        '<div class="composer" style="border:1px solid #ccc;border-radius:4px;padding:8px">' +
+        '  <div contenteditable="true" role="textbox" aria-label="Comment" ' +
+        '       data-lexical-editor="true" style="min-height:44px;outline:none">' +
+        '    <p><span data-lexical-text="true"></span></p>' +
+        '  </div>' +
+        '</div>';
 
       // Closed shadow root: nothing outside can reach into this, us included.
       const closedRoot = document.getElementById('closed-host').attachShadow({ mode: 'closed' });

@@ -4,6 +4,7 @@ import { buildSignals, fieldKeyFor, readFieldText, resolveField } from '../src/c
 import { redact } from '../src/capture/redact';
 import { sanitizeHtml } from '../src/capture/sanitize';
 import {
+  editorKindOf,
   shouldCapture,
   type CaptureContext,
   type EditorKind,
@@ -72,6 +73,75 @@ export default defineContentScript({
 
     let captured = 0;
     let refused = 0;
+    let unresolved = 0;
+
+    // --- Dev diagnostics ------------------------------------------------------
+    //
+    // These exist because the failure mode of this extension is silence. If a
+    // field is refused, or an event never resolves to a field at all, nothing
+    // visible happens — which is indistinguishable from "it is working, I just
+    // cannot see the database". Everything below compiles out of the production
+    // build via import.meta.env.DEV.
+
+    /** Elements already explained once, so typing does not spam the console. */
+    const explained = new WeakSet<Element>();
+
+    function describe(el: Element): string {
+      const id = el.getAttribute('id');
+      const name = el.getAttribute('name');
+      const label = el.getAttribute('aria-label');
+      return (
+        el.tagName.toLowerCase() +
+        (id ? `#${id}` : '') +
+        (name ? `[name=${name}]` : '') +
+        (label ? `[aria-label=${label}]` : '')
+      );
+    }
+
+    function reportRefusal(el: Element, reason: string, detail?: string): void {
+      if (explained.has(el)) return;
+      explained.add(el);
+      console.log(
+        `[Draft Rescue] REFUSED ${describe(el)} — ${reason}${detail ? `: ${JSON.stringify(detail)}` : ''}`,
+      );
+    }
+
+    /**
+     * An input event we could not trace back to a field at all.
+     *
+     * Almost always a closed shadow root: when a site calls
+     * attachShadow({ mode: 'closed' }), composedPath() omits everything inside
+     * it, so the innermost node we can see is the custom element wrapping it.
+     * Nothing can reach in — not us, not any extension. Worth saying out loud
+     * rather than leaving as an unexplained silence.
+     */
+    function reportUnresolved(path: readonly EventTarget[]): void {
+      const first = path[0] as Element | undefined;
+      if (!first || typeof first.tagName !== 'string') return;
+      if (explained.has(first)) return;
+      explained.add(first);
+
+      // An `input` event always originates on an editable element. So if the
+      // innermost node we can see is NOT editable, the real origin is hidden
+      // from us — and a closed shadow root is the only thing that hides it.
+      // (An open root would have put the field itself in the path, and we would
+      // have resolved it.) A closed root is never exposed as `.shadowRoot`,
+      // which is the second half of the tell.
+      const hasOpenShadow =
+        (first as Element & { shadowRoot?: ShadowRoot | null }).shadowRoot != null;
+      const likelyClosedRoot = !hasOpenShadow && editorKindOf(first) === null;
+
+      console.log('[Draft Rescue] UNRESOLVED input event', {
+        innermostVisible: describe(first),
+        path: path
+          .slice(0, 6)
+          .map((n) => ((n as Element).tagName ?? String(n)).toLowerCase()),
+        likelyClosedShadowRoot: likelyClosedRoot,
+        note: likelyClosedRoot
+          ? 'The field is inside a closed shadow root. No extension can see into one.'
+          : 'The event did not come from a field shape we handle.',
+      });
+    }
 
     function isIncognito(): boolean {
       try {
@@ -136,11 +206,20 @@ export default defineContentScript({
         const result = browser.runtime.sendMessage({ kind: MESSAGE.capture, payload });
         // Fire and forget, but a rejected promise with no catch is an unhandled
         // rejection in the page's console — someone else's console.
-        void Promise.resolve(result).catch(() => {});
-      } catch {
+        void Promise.resolve(result).catch((error: unknown) => {
+          // Silent in production; in dev, a message that never arrives is
+          // exactly the failure that is hardest to notice, so say so.
+          if (import.meta.env.DEV) {
+            console.warn('[Draft Rescue] message to the service worker failed', error);
+          }
+        });
+      } catch (error) {
         // "Extension context invalidated" — the extension was reloaded or
         // updated while this page stayed open. Nothing to do but stop trying;
         // the next page load gets a fresh content script.
+        if (import.meta.env.DEV) {
+          console.warn('[Draft Rescue] could not send (extension reloaded?)', error);
+        }
       }
     }
 
@@ -194,12 +273,19 @@ export default defineContentScript({
         // composedPath, not event.target: inside a Shadow DOM the browser
         // retargets the event to the host element, so event.target would be the
         // web component, not the field the user typed into.
-        const el = resolveField(event.composedPath());
-        if (!el) return;
+        const path = event.composedPath();
+        const el = resolveField(path);
+
+        if (!el) {
+          unresolved++;
+          if (import.meta.env.DEV) reportUnresolved(path);
+          return;
+        }
 
         const decision = shouldCapture(el, context());
         if (!decision.capture) {
           refused++;
+          if (import.meta.env.DEV) reportRefusal(el, decision.reason, decision.detail);
           return;
         }
 
@@ -224,10 +310,61 @@ export default defineContentScript({
       // Reachable from DevTools by switching the console's context dropdown
       // from "top" to the Draft Rescue entry — content scripts run in their own
       // isolated world, so this is not visible to the page itself.
+      /**
+       * The focused element, following shadow roots down.
+       *
+       * document.activeElement stops at the shadow host — it reports the custom
+       * element, not the field inside it. Each open root has its own
+       * activeElement, so reaching the real one means descending.
+       */
+      const deepActiveElement = (): Element | null => {
+        let node: Element | null = document.activeElement;
+        while (node?.shadowRoot?.activeElement) node = node.shadowRoot.activeElement;
+        return node;
+      };
+
       (window as unknown as Record<string, unknown>).__draftRescue = {
         get stats() {
-          return { captured, refused, pending: pending.size, settings };
+          return { captured, refused, unresolved, pending: pending.size, settings };
         },
+
+        /** Why is this field (or the focused one) not being captured? */
+        probe(target?: Element) {
+          const el = target ?? deepActiveElement();
+          if (!el) return 'Nothing is focused. Click into the field first, then run probe().';
+
+          const decision = shouldCapture(el, context());
+          const kind = decision.capture ? decision.kind : null;
+          return {
+            element: describe(el),
+            tagName: el.tagName,
+            contenteditable: el.getAttribute('contenteditable'),
+            decision,
+            textLength: kind ? readFieldText(el, kind).length : null,
+            minLength: settings.minLength,
+            insideShadowRoot: el.getRootNode() !== document,
+          };
+        },
+
+        /** What actually made it into the database. Asks the service worker. */
+        async dump(limit = 20) {
+          const rows = await browser.runtime.sendMessage({ kind: MESSAGE.recent, limit });
+          if (!Array.isArray(rows) || rows.length === 0) {
+            console.log('[Draft Rescue] nothing stored yet');
+            return rows ?? [];
+          }
+          console.table(
+            rows.map((r: { signals: { origin: string; fieldName?: string; domPath: string }; text: string; createdAt: number }) => ({
+              site: r.signals.origin,
+              field: r.signals.fieldName ?? r.signals.domPath.slice(-40),
+              chars: r.text.length,
+              preview: r.text.slice(0, 60),
+              when: new Date(r.createdAt).toLocaleTimeString(),
+            })),
+          );
+          return rows;
+        },
+
         explain(el: Element) {
           return shouldCapture(el, context());
         },

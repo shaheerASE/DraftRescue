@@ -2,7 +2,7 @@ import { defineBackground } from 'wxt/utils/define-background';
 import { browser } from 'wxt/browser';
 import { readSettings } from '../src/shared/settings';
 import { MESSAGE, type ExtensionMessage } from '../src/shared/types';
-import { getStats, purgeExpired, writeSnapshot } from '../src/storage/snapshots';
+import { getStats, purgeExpired, recentSnapshots, writeSnapshot } from '../src/storage/snapshots';
 
 /**
  * THE SERVICE WORKER (Manifest V3 "background").
@@ -108,6 +108,20 @@ export default defineBackground(() => {
         } catch (error) {
           console.error('[Draft Rescue] write failed', error);
           sendResponse({ stored: false, reason: 'error' });
+        }
+      })();
+      return true;
+    }
+
+    // Lets the content script's dev console ask what actually landed in the
+    // database, without the user having to find the service worker's DevTools.
+    if (msg?.kind === MESSAGE.recent) {
+      void (async () => {
+        try {
+          sendResponse(await recentSnapshots(msg.limit ?? 20));
+        } catch (error) {
+          console.error('[Draft Rescue] recent failed', error);
+          sendResponse([]);
         }
       })();
       return true;

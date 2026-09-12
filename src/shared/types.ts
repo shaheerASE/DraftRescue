@@ -67,11 +67,13 @@ export interface CapturePayload {
 export const MESSAGE = {
   capture: 'draft-rescue/capture',
   stats: 'draft-rescue/stats',
+  recent: 'draft-rescue/recent',
 } as const;
 
 export type ExtensionMessage =
   | { kind: typeof MESSAGE.capture; payload: CapturePayload }
-  | { kind: typeof MESSAGE.stats };
+  | { kind: typeof MESSAGE.stats }
+  | { kind: typeof MESSAGE.recent; limit?: number };
 
 export interface StorageStats {
   snapshots: number;

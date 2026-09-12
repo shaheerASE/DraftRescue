@@ -173,6 +173,58 @@ then look at the `snapshots` store. Nothing you typed into a red section should
 be there. The comment box containing a card number should be there, with the
 number replaced by `[redacted]`.
 
+---
+
+## If a site is not being captured
+
+Load the **dev** build (`npm run dev` → `.output/chrome-mv3-dev`). The dev build
+explains itself; the production build is silent on purpose.
+
+Open the page's DevTools (F12) → Console. **Switch the context dropdown at the
+top of the Console from `top` to the Draft Rescue entry** — content scripts run
+in their own isolated world, and that dropdown is how you reach ours. Then type
+into the field.
+
+You will see one of these:
+
+| Console line | What it means |
+|---|---|
+| nothing at all | The `input` event never reached us. The field may be in a cross-origin frame we are blocked from, or the site is stopping the event. |
+| `REFUSED <field> — identifier: "..."` | The gate refused it, and names the word that did it. If that word is innocent, it is a bug in `src/capture/patterns.ts` — tell us which word and which site. |
+| `REFUSED <field> — payment-origin` / `payment-form` | We think this is a checkout. Intentional. |
+| `UNRESOLVED input event ... likelyClosedShadowRoot: true` | The field is inside a **closed** shadow root. No extension can see into one — see Known limitations. |
+| `UNRESOLVED input event ... likelyClosedShadowRoot: false` | The event came from something we do not recognise as a field. Worth reporting. |
+
+Three commands, in that same console context:
+
+```js
+__draftRescue.dump()     // table of what is ACTUALLY in the database
+__draftRescue.stats      // captured / refused / unresolved counts
+__draftRescue.probe()    // click into the field first, then run this
+```
+
+`probe()` is the one to reach for. Click into the field that is not working, run
+it, and it reports what we resolved, the decision, the text length against the
+minimum, and whether the field is inside a shadow root.
+
+`dump()` asks the service worker what it stored and prints a table — far quicker
+than hunting for the service worker's DevTools.
+
+### Two things that look like faults and are not
+
+**"Errors" on `chrome://extensions`.** Click it and read them. Yellow ⚠ warnings
+about `modulepreload` or preloaded resources are cosmetic and came from the
+build tooling, not from capture. (They are fixed as of Phase 1; if you still see
+them, you are running an older build.)
+
+**Two copies of Draft Rescue installed.** If `chrome://extensions` shows Draft
+Rescue twice with different IDs, you have loaded both `.output/chrome-mv3` and
+`.output/chrome-mv3-dev`. Both will capture, into two separate databases, and
+every console line appears twice. Remove one — keep the `-dev` one while
+developing.
+
+---
+
 **A console helper, in dev builds.** In the page's DevTools console, switch the
 context dropdown at the top of the Console from `top` to the Draft Rescue entry
 — content scripts run in their own isolated world, so this is how you reach

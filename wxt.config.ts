@@ -55,5 +55,16 @@ export default defineConfig({
     // Tailwind v4 is a Vite plugin. No tailwind.config.js, no postcss.config.js
     // — content scanning is automatic and the theme lives in CSS.
     plugins: [tailwindcss()],
+
+    build: {
+      // Vite normally emits <link rel="modulepreload"> for shared chunks. On an
+      // extension page Chrome reports that as "a cross-world extension resource
+      // mismatch" and logs a warning against the extension — harmless, but it
+      // puts warnings on the Errors button that look like real faults, and the
+      // preload buys nothing here: these pages load from local disk, not a
+      // network. Turning it off keeps the extension's error list honest, so a
+      // warning there always means something.
+      modulePreload: false,
+    },
   }),
 });
