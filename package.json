@@ -18,7 +18,8 @@
     "smoke": "node scripts/smoke.mjs",
     "build:dev": "wxt build -m development",
     "smoke:dev": "node scripts/smoke-dev.mjs",
-    "smoke:restore": "node scripts/smoke-restore.mjs"
+    "smoke:restore": "node scripts/smoke-restore.mjs",
+    "smoke:prompt": "node scripts/smoke-prompt.mjs"
   },
   "dependencies": {
     "idb": "^8.0.3",

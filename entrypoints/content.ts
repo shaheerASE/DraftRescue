@@ -12,6 +12,7 @@ import {
 import { DEFAULT_SETTINGS, onSettingsChanged, readSettings, type Settings } from '../src/shared/settings';
 import { MATCH_THRESHOLD, type FieldCandidate } from '../src/match/score';
 import { restoreInto } from '../src/restore/restore';
+import { createRestorePrompt, UI_MARKER } from '../src/ui/prompt';
 import { MESSAGE, type CapturePayload } from '../src/shared/types';
 
 /**
@@ -76,6 +77,17 @@ export default defineContentScript({
     let captured = 0;
     let refused = 0;
     let unresolved = 0;
+
+    /**
+     * The last field the user was actually in.
+     *
+     * Focus alone cannot answer "which field does the user mean". Clicking the
+     * restore pill, a toolbar button, or a DevTools panel all move focus off the
+     * field — so by the time we act, the thing we want is no longer
+     * document.activeElement. The pill in particular must write back into the
+     * box it belongs to, not into whatever has focus at the moment of the click.
+     */
+    let lastFocusedField: Element | null = null;
 
     // --- Dev diagnostics ------------------------------------------------------
     //
@@ -305,6 +317,10 @@ export default defineContentScript({
           return;
         }
 
+        // Typing is an answer: the user is writing, not recovering. Drop the
+        // offer before anything else, so it never sits over text being typed.
+        if (prompt.anchor() === el) prompt.hide();
+
         const decision = shouldCapture(el, context());
         if (!decision.capture) {
           refused++;
@@ -313,6 +329,100 @@ export default defineContentScript({
         }
 
         schedule(el, decision.kind);
+      },
+      { capture: true, passive: true },
+    );
+
+    // --- The inline restore prompt -------------------------------------------
+
+    const prompt = createRestorePrompt();
+
+    /**
+     * Guards against a stale answer winning.
+     *
+     * Asking the service worker which drafts match is asynchronous, and in that
+     * window the user may have typed, tabbed away, or focused a different box.
+     * Every request carries a token; only the newest one is allowed to show
+     * anything. Without this, focusing two fields quickly can offer the first
+     * field's draft over the second field.
+     */
+    let offerToken = 0;
+
+    async function maybeOffer(el: Element, kind: EditorKind): Promise<void> {
+      const token = ++offerToken;
+
+      // Never on a field that already has text. Someone mid-sentence does not
+      // want a button offering to replace what they are writing.
+      if (readFieldText(el, kind).trim() !== '') return;
+
+      let ranked: FieldCandidate[];
+      try {
+        ranked = await browser.runtime.sendMessage({
+          kind: MESSAGE.candidates,
+          signals: buildSignals(el, kind),
+          limit: 1,
+        });
+      } catch {
+        return; // extension reloaded, or the worker went away
+      }
+
+      if (token !== offerToken) return; // the user has moved on
+      if (!Array.isArray(ranked)) return;
+
+      const best = ranked[0];
+      const snapshot = best?.versions[0];
+      if (!best || !snapshot || best.score < MATCH_THRESHOLD) return;
+
+      // Re-check both conditions after the await: the field may have gained
+      // text, or lost focus, while we were asking.
+      if (readFieldText(el, kind).trim() !== '') return;
+      if (lastFocusedField !== el) return;
+
+      prompt.show(el, snapshot.createdAt, () => {
+        // NEVER automatic. This only runs from a click on the pill.
+        const result = restoreInto(el, kind, snapshot.text);
+        if (import.meta.env.DEV) {
+          console.log('[Draft Rescue] restored from prompt', result);
+        }
+      });
+    }
+
+    document.addEventListener(
+      'focusin',
+      (event) => {
+        const el = resolveField(event.composedPath());
+        if (!el) return;
+
+        lastFocusedField = el;
+
+        const decision = shouldCapture(el, context());
+        if (!decision.capture) return;
+
+        void maybeOffer(el, decision.kind);
+      },
+      { capture: true, passive: true },
+    );
+
+    document.addEventListener(
+      'focusout',
+      (event) => {
+        // Focus moving into our own pill is not the user leaving the field.
+        // Cancelling mousedown should stop that happening at all, but a
+        // keyboard or assistive-technology path could still land there, and
+        // hiding would drop the very handler the click is about to call.
+        const next = (event as FocusEvent).relatedTarget as Element | null;
+        if (next && typeof next.closest === 'function' && next.closest(`[${UI_MARKER}]`)) {
+          return;
+        }
+        prompt.hide();
+      },
+      { capture: true, passive: true },
+    );
+
+    document.addEventListener(
+      'keydown',
+      (event) => {
+        if (event.key === 'Escape') prompt.hide();
       },
       { capture: true, passive: true },
     );

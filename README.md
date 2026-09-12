@@ -7,9 +7,9 @@ failed form submit does not cost you an hour of writing.
 all — that is a design constraint, not an aspiration, and it is checkable from
 the built bundle.
 
-> Status: **Phase 2 — matching and restore**. It captures, matches a live field
-> against stored drafts, and can put text back. There is still no UI: restore is
-> driven from the console. The inline prompt lands in Phase 3.
+> Status: **Phase 3 — the inline prompt**. Focus an empty field it holds a draft
+> for and a small pill offers it back. Browsing history, search and settings land
+> in Phase 4.
 
 ---
 
@@ -41,6 +41,7 @@ correctly is the whole point of this project.
 | `npm run build:dev` | Production-style build with the dev diagnostics left in |
 | `npm run smoke:dev` | Checks the dev diagnostics report real problems and only those |
 | `npm run smoke:restore` | Checks restore works against real editor behaviour in Chrome |
+| `npm run smoke:prompt` | Checks the inline pill: placement, scrolling, clicking |
 | `npm run size` | Check the content script against its 20 KB gzipped budget |
 | `npm run icons` | Regenerate the placeholder icons |
 | `npm run zip` | Package for Chrome Web Store upload |
@@ -296,6 +297,59 @@ writes it.
 **Scoring runs in the service worker, restoring runs in the content script.**
 Scoring needs no DOM and the content script pays for every byte on every page
 the user visits. Restoring needs the live element, so it has no choice.
+
+---
+
+## The inline prompt
+
+Focus a field that is **empty**, where a stored draft scores above the matching
+threshold, and a pill fades in at the field's bottom-right:
+
+```
+                                        ↺ Restore draft (2m ago)
+```
+
+Click it and the draft goes back. It never restores on its own, and it never
+appears over a field that already has text — someone mid-sentence does not want
+a button offering to replace what they are writing. Typing dismisses it, so does
+Escape, so does leaving the field.
+
+On a field too short to hold the pill without covering the text — a single-line
+input — it sits just underneath instead.
+
+### Three details that are less obvious than they look
+
+**It lives in an open Shadow DOM.** The shadow boundary is what stops the host
+page's CSS reaching our pill and our CSS reaching their page. `open` rather than
+`closed`: that isolation is identical in both modes, and `closed` only hides
+`.shadowRoot` from the page's JavaScript — which stops nothing, since a page
+that wanted to interfere could patch `attachShadow` before we run. What `closed`
+reliably does is hide the pill from DevTools and from automated tests. Every
+selector in `npm run smoke:prompt` reaches through the boundary; with `closed`
+none of it could be asserted.
+
+Note that a shadow root blocks *selectors*, not *inheritance* — font, colour and
+line-height still inherit through it. So the pill states all of them outright.
+
+**Clicking it must not blur the field.** A button takes focus when clicked,
+which would blur the field we are about to write into — and for a rich editor,
+losing the selection means `execCommand` has nowhere to insert. So `mousedown`
+is cancelled, keeping focus exactly where it is. The smoke test asserts the
+field still has focus after a restore.
+
+**Hidden means gone, not transparent.** An `opacity: 0` element still has a box
+and still swallows clicks, so fading alone would leave an invisible button
+intercepting taps on whatever is underneath. `visibility` and `pointer-events`
+make it genuinely inert; a delayed visibility transition lets the fade finish
+first.
+
+### Known gap
+
+The pill is a real `<button>` with an `aria-label`, but it cannot currently be
+reached by keyboard alone — it sits at the end of the document, so Tab from the
+field does not land on it, and giving it a tabindex there would put it in the
+wrong place in the page's tab order. Keyboard activation needs a registered
+command shortcut, which is Phase 4 work. Escape already dismisses.
 
 ---
 

@@ -78,6 +78,21 @@
     </section>
 
     <section class="capture">
+      <h2>Deliberately short input</h2>
+      <p class="expect">
+        Expect: captured, and the restore pill sits just BELOW it rather than
+        inside — the field is not tall enough to hold the pill without covering
+        what is being typed.
+      </p>
+      <input
+        id="tiny"
+        type="text"
+        name="tinyNote"
+        style="height: 18px; padding: 0 4px; font-size: 11px"
+      />
+    </section>
+
+    <section class="capture">
       <h2>contenteditable</h2>
       <p class="expect">
         Expect: captured, with sanitised HTML stored alongside the plain text.
