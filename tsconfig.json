@@ -1,0 +1,22 @@
+{
+  // WXT generates .wxt/tsconfig.json on `wxt prepare`. It already turns on
+  // everything this project wants: strict, noUncheckedIndexedAccess,
+  // noImplicitOverride, noFallthroughCasesInSwitch, verbatimModuleSyntax.
+  // (noUncheckedIndexedAccess matters most for us — the field-identity code in
+  // Phase 2 is full of lookups that can miss, and this forces us to handle the
+  // miss rather than trusting a T where we really have T | undefined.)
+  //
+  // So we extend and add only what is genuinely ours.
+  "extends": "./.wxt/tsconfig.json",
+  "compilerOptions": {
+    // Chrome/extension API types come from @wxt-dev/browser via the `browser`
+    // import in wxt/browser — we do not need @types/chrome. This line is only
+    // for Vitest's describe/it/expect globals.
+    "types": ["vitest/globals"],
+
+    // The React automatic runtime: .tsx compiles without `import React` in
+    // scope. WXT's react module configures this for the bundler but does not
+    // write it into the generated tsconfig, so tsc needs to be told separately.
+    "jsx": "react-jsx"
+  }
+}

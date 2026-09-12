@@ -1,0 +1,28 @@
+@import 'tailwindcss';
+
+/* Tailwind v4 keeps the design tokens in CSS, not in a JS config file.
+   Anything defined in @theme becomes a utility class automatically:
+   --color-ink-500 here gives you `bg-ink-500`, `text-ink-500`, etc. */
+@theme {
+  --color-ink-50: #f5f6fa;
+  --color-ink-100: #e8eaf2;
+  --color-ink-300: #a9afc6;
+  --color-ink-500: #5b6187;
+  --color-ink-700: #2f3350;
+  --color-ink-900: #171a2c;
+
+  --color-rescue-400: #7c8cff;
+  --color-rescue-500: #5a6cf5;
+  --color-rescue-600: #4553d6;
+}
+
+/* These two surfaces are our own pages, so we control the whole box model.
+   The popup has no viewport of its own — Chrome sizes it to the content, which
+   is why width is pinned here rather than left to the browser. */
+html,
+body {
+  margin: 0;
+  font-family:
+    ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
