@@ -7,8 +7,10 @@ failed form submit does not cost you an hour of writing.
 all — that is a design constraint, not an aspiration, and it is checkable from
 the built bundle.
 
-> Status: **Phase 5 — test harness**. Feature-complete and tested. What remains
-> is the store submission pack: icons, screenshots, and the listing copy.
+> Status: **feature-complete**. Everything in the specification is built and
+> tested except one item — see [Not built](#not-built). Store submission
+> materials are in [`store/`](store/); icons and screenshots still need a
+> designer, and the privacy policy needs a hosted URL.
 
 ---
 
@@ -44,6 +46,7 @@ correctly is the whole point of this project.
 | `npm run smoke:ui` | Drives the popup and options in a real browser |
 | `npm run fixtures` | Serves the fixture page (on two origins) to try by hand |
 | `npm run size` | Check the content script against its 20 KB gzipped budget |
+| `npm run check:offline` | Prove the built extension cannot reach the network |
 | `npm run icons` | Regenerate the placeholder icons |
 | `npm run zip` | Package for Chrome Web Store upload |
 
@@ -88,7 +91,7 @@ What reloads automatically and what does not:
 
 ---
 
-## Verifying Phase 0
+## Checking a development build is working
 
 Three things have to be true. Check each one.
 
@@ -161,22 +164,7 @@ form, and a comment box containing a card number.
 
 ---
 
-## Verifying Phase 1
-
-Run `npm run dev` and load `.output/chrome-mv3-dev`.
-
-**The automated check, first.** This is the honest one, and it takes 30 seconds:
-
-```bash
-npm test        # 292 unit tests: the capture gate, redaction, keys, storage
-npm run build
-npm run smoke   # loads the real extension in a real Chrome and types into it
-```
-
-`npm run smoke` opens the fixture page, types into every kind of field, and then
-reads the service worker's IndexedDB to check what actually landed. It asserts
-both directions: the drafts that must be there, and the passwords and card
-numbers that must not.
+## Seeing your drafts in the database
 
 **Then check it by hand, because that is what you will trust.**
 
@@ -572,13 +560,33 @@ entrypoints/          Each subfolder/file here becomes part of the extension
 src/                  Shared, testable logic imported by entrypoints
 assets/               Styles processed by the build (Tailwind entry)
 public/               Copied verbatim into the build (icons)
-scripts/              Build-time tooling (icon generation, size budget)
-test/                 Test fixtures and integration-ish tests
+scripts/              Build tooling and browser test suites
+  lib/                  Shared: the two-origin fixture server
+store/                Chrome Web Store submission materials
+test/                 Fixture pages, and the manual checklist for real sites
 ```
 
 `.output/` (build result) and `.wxt/` (generated types) are both gitignored.
 
 ---
+
+## Not built
+
+One item from the specification is missing, and it is a deliberate gap rather
+than an oversight — flagged here so it is not discovered after submission.
+
+**The right-click menu.** The spec describes three ways to get a draft back:
+the inline prompt, a right-click "Recover text here" on any editable field, and
+the popup. The first and third are built. The second is not.
+
+It matters most in the case the inline prompt cannot cover: the field already
+has text in it, or the match scored below the threshold, so no pill appears. The
+way out today is the popup — find the draft, copy it, paste it — which works but
+is four steps where one would do.
+
+Building it costs one more permission (`contextMenus`), which is one more thing
+to justify at review. That is the trade, and it is worth making before a paid
+tier exists.
 
 ## Known limitations
 
@@ -610,6 +618,33 @@ Documented as we hit them, not hidden:
 
 ---
 
+## Privacy
+
+No data leaves your machine. There is no server, no account, and no network code
+in the extension at all.
+
+The full policy is in [`PRIVACY.md`](PRIVACY.md), and it is checkable rather
+than merely stated:
+
+```bash
+npm run build && npm run check:offline
+```
+
+That inspects the **built** extension — the files that actually run — and fails
+if it finds any way to transmit data, any remote address, or any remotely loaded
+resource. If it ever fails, the README, the privacy policy and the store listing
+are all wrong at the same time.
+
 ## Licence
 
-Not yet decided.
+**Not yet chosen — this is a decision for the author, and it should be made
+before the source is public.**
+
+It matters more than it looks for this project. The privacy claim rests on
+anyone being able to read the source and verify it, which means the source has
+to be public, which means it needs a licence. Without one, the default is "all
+rights reserved" and nobody may legally copy it even to check it.
+
+MIT is the usual choice for something like this and imposes nothing on anyone.
+A copyleft licence (GPL) would stop a closed-source fork, at the cost of some
+goodwill. Either works; no licence does not.

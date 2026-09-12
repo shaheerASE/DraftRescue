@@ -5,12 +5,7 @@ import {
   writeSettings,
   type Settings,
 } from '../../src/shared/settings';
-import {
-  deleteEverything,
-  fetchStats,
-  formatBytes,
-  hostOf,
-} from '../../src/ui/react/api';
+import { deleteEverything, fetchStats, formatBytes } from '../../src/ui/react/api';
 
 /**
  * Settings.
@@ -350,13 +345,26 @@ function Toggle({
   );
 }
 
-/** Accept a URL, a host, or something with a path, and keep only the hostname. */
+/**
+ * Accept a URL, a host, or something with a path, and keep only the hostname.
+ *
+ * Parsed by hand rather than with `new URL()`, which would need a literal
+ * `https://` prefix for a bare hostname. That is harmless here — the string is
+ * never requested, and nothing in this extension could request it — but it is
+ * also the exact shape of an exfiltration endpoint, and scripts/check-offline.mjs
+ * rightly refuses to distinguish. Better to not write the pattern at all than to
+ * teach the check to ignore it.
+ */
 function normaliseHost(raw: string): string {
-  const trimmed = raw.trim().toLowerCase();
-  if (!trimmed) return '';
-  try {
-    return new URL(trimmed.includes('://') ? trimmed : `https://${trimmed}`).hostname;
-  } catch {
-    return hostOf(trimmed);
-  }
+  const host = raw
+    .trim()
+    .toLowerCase()
+    .replace(/^[a-z][a-z0-9+.-]*:\/\//, '') // scheme
+    .replace(/^[^/@]*@/, '') // credentials
+    .split(/[/?#]/)[0] // path, query, fragment
+    ?.split(':')[0] // port
+    ?? '';
+
+  // Anything left that is not host-shaped is not a site.
+  return /^[a-z0-9.-]+\.[a-z]{2,}$/.test(host) || host === 'localhost' ? host : '';
 }

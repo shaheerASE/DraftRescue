@@ -21,7 +21,8 @@
     "smoke:restore": "node scripts/smoke-restore.mjs",
     "smoke:prompt": "node scripts/smoke-prompt.mjs",
     "smoke:ui": "node scripts/smoke-ui.mjs",
-    "fixtures": "node scripts/serve-fixtures.mjs"
+    "fixtures": "node scripts/serve-fixtures.mjs",
+    "check:offline": "node scripts/check-offline.mjs"
   },
   "dependencies": {
     "idb": "^8.0.3",
