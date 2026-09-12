@@ -258,11 +258,25 @@ export default defineContentScript({
       }
     }
 
+    /**
+     * Longest we will wait for the browser to go idle before saving anyway.
+     *
+     * requestIdleCallback's `timeout` is a deadline, not a delay: on almost
+     * every page an idle moment arrives within a frame or two. It only bites on
+     * a page that is genuinely busy — and that is precisely a page where the
+     * user may be about to lose something.
+     *
+     * So this is deliberately short. Being 400ms late to a save is invisible;
+     * being 2 seconds late is a draft, and politeness towards someone else's
+     * page does not outrank the one thing this extension exists to do.
+     */
+    const IDLE_DEADLINE_MS = 400;
+
     /** Runs work when the browser is not busy, so typing never waits on us. */
     function whenIdle(fn: () => void): void {
       const ric = (window as unknown as { requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number })
         .requestIdleCallback;
-      if (typeof ric === 'function') ric(fn, { timeout: 2000 });
+      if (typeof ric === 'function') ric(fn, { timeout: IDLE_DEADLINE_MS });
       else setTimeout(fn, 0);
     }
 
@@ -271,8 +285,20 @@ export default defineContentScript({
       if (existing) clearTimeout(existing.timer);
 
       const timer = setTimeout(() => {
-        pending.delete(el);
-        whenIdle(() => capture(el, kind));
+        // The field stays in `pending` until capture has actually run.
+        //
+        // Deleting it here, before waiting for idle, opened a hole: during that
+        // wait the field was in neither place — the debounce had fired, so no
+        // timer would save it, and flush() iterates `pending`, so closing the
+        // tab in that window found nothing to write. The unprotected moment was
+        // small, but it was exactly the moment the flush exists for.
+        //
+        // Capturing twice is harmless if flush beats the idle callback: capture
+        // compares against the last text it sent and returns early.
+        whenIdle(() => {
+          pending.delete(el);
+          capture(el, kind);
+        });
       }, DEBOUNCE_MS);
 
       pending.set(el, { el, kind, timer });

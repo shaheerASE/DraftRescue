@@ -256,6 +256,29 @@ not being captured and you want to know why, that is the tool.
 
 ---
 
+## Timing: how long before something is saved
+
+| | |
+|---|---|
+| You stop typing | save begins after **800ms** |
+| Browser is busy | at most **400ms** more, then it saves anyway |
+| You switch tab, navigate away, or close it | saved **immediately**, no wait |
+
+The 800ms is a debounce: it collapses a burst of typing into one save instead of
+writing on every keystroke. The 400ms is a deadline on `requestIdleCallback`,
+which lets the browser pick a moment when it is not busy — being a few hundred
+milliseconds late is invisible, and it keeps us out of the way of the page the
+user is actually using.
+
+Leaving the page does not wait for either. `visibilitychange` and `pagehide`
+write everything in flight synchronously, which is why text typed and abandoned
+two seconds before closing a tab still survives.
+
+(If you see 2000 or 2500 anywhere, it is in `scripts/*.mjs` — padding in the
+tests so they are not timing-sensitive. None of it ships.)
+
+---
+
 ## How it fits together
 
 ```

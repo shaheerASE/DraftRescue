@@ -249,6 +249,52 @@ check(
   new Set(letterVersions.map((r) => r.fieldKey)).size === 1,
 );
 
+// --- Leaving the page saves what is in flight --------------------------------
+// The debounce is 800ms, so text typed and abandoned before it fires would be
+// lost without the flush on visibilitychange/pagehide. This types and then
+// leaves well inside that window, which is the ordinary case of closing a tab
+// mid-sentence.
+{
+  const IN_FLIGHT = 'Typed and then abandoned before the debounce could fire.';
+  const leaving = await ctx.newPage();
+  await leaving.goto(`${base}/fixtures.html`, { waitUntil: 'load' });
+  await leaving.locator('#tiny').pressSequentially(IN_FLIGHT, { delay: 1 });
+
+  // Well under the 800ms debounce: nothing has been written yet.
+  await leaving.waitForTimeout(200);
+
+  await leaving.evaluate(() => {
+    Object.defineProperty(document, 'visibilityState', {
+      value: 'hidden',
+      configurable: true,
+    });
+    document.dispatchEvent(new Event('visibilitychange'));
+  });
+  await leaving.waitForTimeout(1200);
+
+  const afterLeaving = await sw.evaluate(async () => {
+    const db = await new Promise((res, rej) => {
+      const req = indexedDB.open('draft-rescue');
+      req.onsuccess = () => res(req.result);
+      req.onerror = () => rej(req.error);
+    });
+    const all = await new Promise((res, rej) => {
+      const req = db.transaction('snapshots').objectStore('snapshots').getAll();
+      req.onsuccess = () => res(req.result);
+      req.onerror = () => rej(req.error);
+    });
+    db.close();
+    return all;
+  });
+
+  check(
+    'text typed and abandoned inside the debounce window is still saved',
+    afterLeaving.some((r) => r.text.includes('abandoned before the debounce')),
+    `stored ${afterLeaving.length} rows, none matching`,
+  );
+  await leaving.close();
+}
+
 // --- The blocklist actually blocks ------------------------------------------
 // Closes the loop between the options page and the capture gate: a setting
 // that persists but does not take effect is worse than no setting at all,
