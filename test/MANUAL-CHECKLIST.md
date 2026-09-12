@@ -1,224 +1,223 @@
-# Manual test checklist
+# How to test Draft Rescue
 
-The automated suites cover the mechanism. This covers the thing they cannot:
-**real sites, whose editors are the entire reason this extension exists.**
+You are checking one thing: **type something, delete it, get it back.**
 
-Every site below uses a different rich-text engine, and each one has its own
-ideas about how text gets into it. A fixture that mimics Lexical is not Lexical.
+That's the whole product. Everything else is detail.
 
-> Run this before any release, and again after any change to
-> `src/capture/field.ts`, `src/restore/restore.ts` or `src/match/score.ts`.
+You do not need DevTools or the console for any of this.
 
 ---
 
-## Setup
+## Before you start
 
 ```bash
-npm run build:dev          # the dev build explains its refusals
+npm run build:dev
 ```
 
-Load `.output/chrome-mv3-dev` at `chrome://extensions`, and make sure it is
-loaded **once** — two copies capture into two databases and log everything
-twice.
+Go to `chrome://extensions` and load `.output/chrome-mv3-dev`.
 
-Then, on each site:
-
-1. Open DevTools (F12) → Console → switch the context dropdown from `top` to
-   **Draft Rescue**. Content scripts run in their own isolated world; that
-   dropdown is how you reach ours.
-2. Keep the console visible. A refusal announces itself there.
+Make sure **Draft Rescue appears only once** on that page. If you see it twice,
+click Remove on one of them. Two copies save into two separate places and will
+confuse you.
 
 ---
 
-## The five steps, on every site
+## The test
 
-For each field listed under a site:
+Do these 8 steps on each website in the list below. Same steps every time.
 
-| # | Do this | Expect |
+**1.** Open the website and find its main writing box.
+(The comment box, the message box, the post box — whatever people actually
+write in.)
+
+**2.** Type a sentence. Make it long — at least 40 characters. For example:
+
+> This is my test sentence for Draft Rescue and it is nice and long.
+
+**3.** Count slowly to three. (Draft Rescue saves about one second after you
+stop typing.)
+
+**4.** Select everything and delete it. The box is now empty.
+
+**5.** Click somewhere else on the page. Anywhere. Just leave the box.
+
+**6.** Click back inside the empty box.
+
+**7.** A small dark button should appear in the bottom-right corner of the box:
+
+> ↺ Restore draft (just now)
+
+**8.** Click it. **Your sentence should come back.**
+
+---
+
+### One more thing after step 8
+
+This is the important part, and it takes ten seconds.
+
+After your text comes back:
+
+- Wait about ten seconds
+- Then type one more letter at the end
+
+**Is your text still there?**
+
+Some websites throw our text away a moment after we put it back. It looks like
+it worked, and then it quietly disappears. That is the bug I most need you to
+find, and waiting ten seconds is the only way to see it.
+
+---
+
+## Where to test
+
+Do the 8 steps on each of these. Write down what happened.
+
+| Website | Where to type | Worked? |
 |---|---|---|
-| 1 | Type 40+ characters. Wait 2 seconds. | No console complaint. |
-| 2 | Run `__draftRescue.dump()` | Your text, with the right site and field name. |
-| 3 | Select all, delete. Click elsewhere. Click back into the field. | The pill appears, bottom-right. |
-| 4 | Hover the pill | Tooltip previews the text it will restore. |
-| 5 | Click it | **The text comes back, and stays back.** |
+| Reddit | A comment box under any post | |
+| Gmail | Compose → the message body | |
+| LinkedIn | "Start a post" | |
+| X (Twitter) | The tweet box | |
+| Notion | Any page, just start typing | |
+| Jira | An issue → Description | |
+| Upwork | A job → Apply → cover letter | |
+| WordPress | New post → the body | |
 
-**Step 5 is the one that matters.** Watch the field for a few seconds after
-restoring, and type a character. If the text vanishes, the editor discarded our
-write — that is the `execCommand` path failing, and it is the single most
-important thing this checklist is looking for.
+For each one write one of:
 
-If a field is not captured, run `__draftRescue.probe()` with the cursor in it.
-It names the rule that refused it.
+- **Yes** — text came back and stayed
+- **Came back then vanished** — this is the important bug
+- **No button appeared** — it never offered to restore
+- **Nothing was saved** — tell me and I will check why
 
----
-
-## Sites
-
-Tick the box, or write what happened.
-
-### Reddit — Lexical
-`reddit.com`, any post → comment box.
-
-- [ ] Comment box captures
-- [ ] Restores, and survives typing afterwards
-- [ ] Reply-to-a-comment box (a different instance of the same editor)
-
-*Already verified once during development. Treat as the regression canary: it is
-a web component with an open shadow root wrapping a Lexical editor, so it
-exercises `composedPath` and the rich-text restore together.*
-
-### Gmail — contenteditable
-`mail.google.com` → Compose.
-
-- [ ] Message body captures
-- [ ] Subject line captures
-- [ ] Restores into the body, and survives
-- [ ] The pill is not hidden behind the compose window's own chrome
-
-*Gmail autosaves its own drafts, so the value here is compatibility rather than
-rescue. The body is `[aria-label="Message Body"]` with `g_editable="true"`.*
-
-### LinkedIn — Quill
-`linkedin.com` → "Start a post", and a message thread.
-
-- [ ] Post composer captures
-- [ ] Message box captures
-- [ ] Restores into the post composer, and survives
-- [ ] The post modal's own "discard?" prompt does not interfere
-
-*The composer is `.ql-editor`, a Quill contenteditable, with the placeholder in
-`data-placeholder` rather than a real placeholder attribute.*
-
-### X — Draft.js
-`x.com` → the compose box.
-
-- [ ] Compose box captures
-- [ ] Restores, and survives
-
-*The hardest one, and the most likely to fail. Draft.js maintains its own
-immutable editor state and is historically hostile to programmatic input. The
-field is `[data-testid="tweetTextarea_0"]`. If restore fails anywhere, expect it
-here first — and note exactly what happens: does the text appear and vanish, or
-never appear at all? The two have different causes.*
-
-### Notion — one contenteditable per block
-`notion.so` → any page.
-
-- [ ] Typing in a paragraph block captures
-- [ ] The page title captures
-- [ ] Restores into an emptied block
-
-*The awkward one. Every block is its own `contenteditable`, so a page of writing
-is dozens of separate fields rather than one, and block ids are generated. Two
-things to watch:*
-
-- **Noise.** Open the popup after a few minutes of writing. If it is full of
-  one-line fragments, the per-block model is producing more rows than it is
-  worth, and that is worth telling me.
-- **Key stability.** Write in a block, move it up or down the page, then empty it
-  and refocus. If the pill does not appear, the DOM-path fallback did not
-  survive the reorder — expected, but worth confirming how badly.
-
-### Jira — ProseMirror
-Any issue → Description, and a comment.
-
-- [ ] Description field captures
-- [ ] Comment field captures
-- [ ] Restores into the description, and survives
-
-*`.ProseMirror` contenteditable. ProseMirror reconciles from its own document
-model, so this is a direct test of the `execCommand` decision.*
-
-### Upwork — plain textarea
-A job posting → Apply → cover letter.
-
-- [ ] Cover letter captures
-- [ ] Restores, and survives
-- [ ] Reloading the page and returning to the same proposal still offers it
-
-*The easy case, and the motivating one — this is the draft people actually lose.
-The last item tests path normalisation: `/proposals/12345` should match itself
-across a reload.*
-
-### WordPress — Gutenberg, and the classic editor
-`wordpress.com` or any self-hosted admin → new post.
-
-- [ ] Gutenberg paragraph block captures
-- [ ] Post title captures
-- [ ] Restores into a block
-- [ ] **Classic editor**: the body captures (it is TinyMCE inside an iframe)
-
-*The classic editor is the interesting half: the body is a `contenteditable`
-inside a same-origin `<iframe id="content_ifr">`. If Gutenberg works and classic
-does not, the problem is frame injection rather than the editor.*
+If a site is awkward to reach (no Upwork account, no Jira), skip it and say so.
+Do not create accounts just to test.
 
 ---
 
-## Safety pass — do this one carefully
+## The safety test
 
-Nothing below should ever appear in `__draftRescue.dump()`.
+This one matters more than all the rest. Please do it.
 
-- [ ] A real login page: type into the password field, then click "show
-      password" if there is one, and type more
-- [ ] A real checkout page (a shop's cart, not a test page): type into any field
-- [ ] Stripe-hosted card fields, if you can reach one without paying
-- [ ] Your own bank's login page
-- [ ] Type a card number into an ordinary comment box on any site — it **should**
-      be captured, with the number replaced by `[redacted]`
+**1.** Go to a website where you log in. Your bank, Gmail, anything.
 
-> If anything sensitive appears in the dump, that is a release blocker, not a
-> bug report. Stop and tell me exactly which field and which site.
+**2.** Click into the **password** box and type something fake, like
+`testing123456789`. **Do not press enter or log in.**
+
+**3.** Click the Draft Rescue icon in your Chrome toolbar.
+
+**4.** Look through the list.
+
+**Your password must NOT be there.** Not shortened, not hidden — not there at
+all.
+
+Do the same on a shopping checkout page if you can reach one: type into the card
+number box, then check the popup. It must not be there either.
+
+> If you ever find something sensitive in that list, stop and tell me
+> immediately. That is not a small bug.
+
+### The opposite test
+
+Now the reverse, to prove the safety net works:
+
+**1.** Go to any ordinary comment box — Reddit is fine.
+
+**2.** Type this exactly:
+
+> Please charge my card 4242 4242 4242 4242 thanks
+
+**3.** Wait three seconds, then open the Draft Rescue popup.
+
+The sentence **should** be saved — but the card number should be replaced with
+`[redacted]`. It should read:
+
+> Please charge my card [redacted] thanks
 
 ---
 
-## Performance pass
+## The practice page
 
-- [ ] Open Gmail or Notion. DevTools → Performance → record while typing a
-      paragraph at normal speed. Look for dropped frames attributable to us.
-- [ ] Leave a heavy page (Gmail, a long Twitter feed) open for ten minutes with
-      the extension active. Memory should not climb.
-- [ ] `npm run size` — the content script must stay under 20 KB gzipped.
-
----
-
-## The local fixture page
+If you want to try everything in one place first:
 
 ```bash
 npm run fixtures
 ```
 
-Covers the shapes that are awkward to find in the wild: open and closed shadow
-roots, same-origin, cross-origin and sandboxed iframes, a password field that
-toggles to `type="text"`, a checkout form, and a comment box containing a card
-number. Green sections must end up in the popup; red sections must not.
+It prints a web address. Open it. The page has boxes of every kind, each
+labelled with a **green** or **red** line down its left side:
 
-`npm run smoke` asserts all of it automatically — the page is there for when you
-want to see it happen.
+- **Green** = type here, it should get saved
+- **Red** = type here, it must NOT get saved
+
+Type into all of them, then open the Draft Rescue popup and compare.
 
 ---
 
-## Recording results
+## If something doesn't work
 
-Copy this into a comment on the PR, or a file:
+Tell me what happened in plain words. "The button didn't show up on LinkedIn" is
+a perfectly good bug report.
+
+If you want to give me more to work with, here is how — but it is optional:
+
+1. Press **F12** on the page that isn't working
+2. Click the **Console** tab
+3. Near the top left there is a dropdown that says `top`. Change it to
+   **Draft Rescue**
+4. Click into the box that isn't working
+5. Type this and press Enter:
+
+```js
+__draftRescue.probe()
+```
+
+Screenshot whatever it prints. It usually says exactly why a box was skipped.
+
+---
+
+## Recording what you found
+
+Copy this, fill it in, send it to me:
 
 ```
 Date:
-Chrome version:
-Build: (git rev-parse --short HEAD)
 
-Site          Capture  Restore  Survives  Notes
-Reddit
-Gmail
-LinkedIn
-X
-Notion
-Jira
-Upwork
-WordPress
+Reddit:
+Gmail:
+LinkedIn:
+X:
+Notion:
+Jira:
+Upwork:
+WordPress:
 
-Safety pass:   PASS / FAIL
-Performance:   PASS / FAIL
+Password test (nothing sensitive saved):  PASS / FAIL
+Card number test (shows [redacted]):      PASS / FAIL
 ```
 
-"Survives" means the text was still there ten seconds and one keystroke after
-restoring. It is the column that finds real bugs.
+---
+
+<details>
+<summary>Why these eight sites (technical — you can skip this)</summary>
+
+Each one uses a different rich-text engine, which is why the list is not
+arbitrary. Restoring text into an editor is not the same as setting a value; how
+each engine accepts text differs, and a test page that imitates one is not the
+real thing.
+
+| Site | Engine | Why it is on the list |
+|---|---|---|
+| Reddit | Lexical | Already verified once — the regression canary |
+| Gmail | plain contenteditable | Compatibility |
+| LinkedIn | Quill | |
+| X | Draft.js | Most likely to fail; historically hostile to programmatic input |
+| Notion | one contenteditable per block | Tests key stability and history noise |
+| Jira | ProseMirror | Direct test of the execCommand decision |
+| Upwork | plain textarea | The easy case, and the motivating one |
+| WordPress | Gutenberg + TinyMCE in an iframe | Two different paths in one site |
+
+If restore fails, the useful detail is *which way* it failed: text appearing and
+then vanishing has a different cause from text never appearing at all.
+
+</details>

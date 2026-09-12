@@ -149,9 +149,10 @@ other extensions' pages. That is a hard browser restriction.
 
 The last row is not laziness. Every site this extension exists for runs a
 different rich-text engine — Lexical, Quill, Draft.js, ProseMirror, Gutenberg —
-and a fixture that mimics Lexical is not Lexical. The checklist walks eight
-sites and asks the one question that finds real bugs: after restoring, is the
-text still there ten seconds and one keystroke later?
+and a fixture that mimics Lexical is not Lexical. The checklist needs no
+DevTools: it is eight steps, repeated on eight sites, ending in the one question
+that finds real bugs — after restoring, is the text still there ten seconds and
+one keystroke later?
 
 `npm run fixtures` serves the local fixture page for the shapes that are awkward
 to find in the wild: open and closed shadow roots, same-origin, cross-origin and
