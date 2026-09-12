@@ -60,8 +60,16 @@
   <body>
     <h1>Draft Rescue test fixtures</h1>
     <p>
-      Green = must be captured. Red = must never be captured. Phase 5 expands
-      this page and adds the manual checklist for real sites.
+      <strong>Green</strong> sections must end up in the popup.
+      <strong>Red</strong> sections must never appear there.
+    </p>
+    <p style="font-size: 12px; color: #777">
+      Serve this with <code>npm run fixtures</code> (two origins, so the
+      cross-origin iframe is genuinely cross-origin). Load the dev build and
+      open the console on the Draft Rescue context to see refusals explained.
+      <code>npm run smoke</code> asserts every section below automatically;
+      this page is for watching it happen. Real sites are covered by
+      <code>test/MANUAL-CHECKLIST.md</code>.
     </p>
 
     <section class="capture">
@@ -136,6 +144,36 @@
         frame and messages the service worker itself.
       </p>
       <iframe src="./frame.html" title="Same-origin frame"></iframe>
+    </section>
+
+    <section class="capture">
+      <h2>Cross-origin iframe</h2>
+      <p class="expect">
+        Expect: captured. This frame is served from a different origin, so the
+        page around it cannot reach into it at all — but Chrome injects a
+        separate copy of the content script directly into the frame, which talks
+        to the service worker on its own. Cross-origin frames are not a
+        limitation for this extension, and this is the proof.
+      </p>
+      <iframe src="__CROSS_ORIGIN__/frame.html" title="Cross-origin frame"></iframe>
+    </section>
+
+    <section class="capture">
+      <h2>Sandboxed iframe</h2>
+      <p class="expect">
+        Expect: captured. This was documented as a limitation until a test
+        checked it. A <code>sandbox</code> attribute without
+        <code>allow-same-origin</code> gives the frame an opaque origin, so the
+        reasoning was that there would be no identity to file a draft under —
+        but a content script runs in an isolated world, which does not inherit
+        that opaque origin, and <code>location.origin</code> still reports the
+        document's real one. The draft is filed under it normally.
+      </p>
+      <iframe
+        src="./frame.html"
+        sandbox="allow-scripts"
+        title="Sandboxed frame"
+      ></iframe>
     </section>
 
     <section class="refuse">

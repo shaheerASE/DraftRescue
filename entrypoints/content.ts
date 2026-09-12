@@ -193,6 +193,7 @@ export default defineContentScript({
         captureInIncognito: settings.captureInIncognito,
         blockedOrigins: settings.blockedOrigins,
         frameHostname: location.hostname,
+        frameOrigin: location.origin,
         passwordMemory,
       };
     }

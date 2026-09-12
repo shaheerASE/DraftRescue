@@ -13,12 +13,11 @@
  * service worker, or that the row lands in the database. Every one of those has
  * failed silently in extensions before. This checks the whole path.
  */
-import { createServer } from 'node:http';
-import { readFile } from 'node:fs/promises';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, extname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { startFixtureServer } from './lib/fixture-server.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(HERE, '..');
@@ -36,26 +35,7 @@ try {
   process.exit(1);
 }
 
-// --- a tiny static server, so this needs no extra dependency ----------------
-const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css' };
-
-const server = createServer(async (req, res) => {
-  const path = (req.url ?? '/').split('?')[0];
-  const file = join(FIXTURES, path === '/' ? 'fixtures.html' : path);
-  if (!file.startsWith(FIXTURES)) {
-    res.writeHead(403).end();
-    return;
-  }
-  try {
-    const body = await readFile(file);
-    res.writeHead(200, { 'content-type': TYPES[extname(file)] ?? 'text/plain' }).end(body);
-  } catch {
-    res.writeHead(404).end('not found');
-  }
-});
-
-await new Promise((done) => server.listen(0, '127.0.0.1', done));
-const base = `http://127.0.0.1:${server.address().port}`;
+const { base, crossOrigin, close: closeServer } = await startFixtureServer();
 
 const userDataDir = mkdtempSync(join(tmpdir(), 'draft-rescue-smoke-'));
 let failures = 0;
@@ -91,7 +71,7 @@ if (!sw) sw = await ctx.waitForEvent('serviceworker', { timeout: 20000 }).catch(
 check('service worker registers', Boolean(sw));
 if (!sw) {
   await ctx.close();
-  server.close();
+  closeServer();
   process.exit(1);
 }
 
@@ -134,9 +114,24 @@ await page.evaluate(() => {
 });
 
 await page
-  .frameLocator('iframe')
+  .frameLocator('iframe[title="Same-origin frame"]')
   .locator('#fi')
   .pressSequentially('A reply typed inside a same-origin iframe.', { delay: 1 });
+
+// A genuinely different origin, served on a second port. The page around it
+// cannot reach in at all — but Chrome injects our content script directly into
+// the frame, which is the whole point.
+await page
+  .frameLocator('iframe[title="Cross-origin frame"]')
+  .locator('#fi')
+  .pressSequentially('A reply typed inside a CROSS-origin iframe.', { delay: 1 });
+
+// A sandboxed frame has an opaque origin, so there is nothing to file a draft
+// under. Documented limitation, asserted below.
+await page
+  .frameLocator('iframe[title="Sandboxed frame"]')
+  .locator('#fi')
+  .pressSequentially('A reply typed inside a SANDBOXED iframe.', { delay: 1 });
 
 // Things that must never be stored.
 await page.locator('#pw').pressSequentially('hunter2-correct-horse-battery', { delay: 1 });
@@ -188,6 +183,16 @@ check('text input draft stored', has('A blog post title'));
 check('contenteditable draft stored', has('rich text draft'));
 check('open shadow root draft stored', has('open shadow root'));
 check('same-origin iframe draft stored', has('same-origin iframe'));
+
+// The claim that shaped the architecture, finally under test: cross-origin
+// frames are not a limitation, because each frame gets its own content script.
+check('CROSS-origin iframe draft stored', has('CROSS-origin iframe'));
+const crossRow = rows.find((r) => r.text.includes('CROSS-origin iframe'));
+check(
+  'and it is filed under the frame\u2019s own origin, not the parent page\u2019s',
+  crossRow?.signals?.origin === crossOrigin,
+  `filed under ${crossRow?.signals?.origin}, frame served from ${crossOrigin}`,
+);
 check('Reddit-shaped composer draft stored', has('Reddit-shaped Lexical composer'));
 
 const composer = rows.find((r) => r.text.includes('Reddit-shaped Lexical composer'));
@@ -219,6 +224,17 @@ check(
   'closed shadow root is not captured (known limitation)',
   !joined.includes('CLOSED shadow root'),
 );
+// Documented as unsupported until this test was written. A content script's
+// isolated world does not inherit a sandboxed frame's opaque origin, so
+// location.origin still reports the document's real one and the draft is filed
+// under it normally.
+check('sandboxed iframe IS captured', has('SANDBOXED iframe'));
+const sandboxRow = rows.find((r) => r.text.includes('SANDBOXED iframe'));
+check(
+  'and under a real origin rather than "null"',
+  Boolean(sandboxRow) && sandboxRow.signals.origin !== 'null' && sandboxRow.signals.origin.startsWith('http'),
+  `filed under ${JSON.stringify(sandboxRow?.signals?.origin)}`,
+);
 
 // --- redaction ---------------------------------------------------------------
 const leaky = rows.find((r) => r.text.includes('Please charge my card'));
@@ -236,8 +252,8 @@ check('redaction was counted on the row', (leaky?.redactions ?? 0) > 0);
 // something is being stored that should not be, whatever the checks above say.
 const distinctFields = new Set(rows.map((r) => r.fieldKey));
 check(
-  'exactly seven distinct fields captured, and no others',
-  distinctFields.size === 7,
+  'exactly eight distinct fields captured, and no others',
+  distinctFields.size === 8,
   `got ${distinctFields.size}:\n        ${texts.map((t) => JSON.stringify(t.slice(0, 60))).join('\n        ')}`,
 );
 
@@ -340,7 +356,7 @@ check(
 }
 
 await ctx.close();
-server.close();
+closeServer();
 rmSync(userDataDir, { recursive: true, force: true });
 
 console.log(`\n${failures === 0 ? 'All smoke checks passed.' : `${failures} smoke check(s) FAILED.`}\n`);

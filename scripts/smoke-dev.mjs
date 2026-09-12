@@ -17,12 +17,11 @@
  * A false alarm in a debugging tool is worse than no tool: it sends you looking
  * for a bug that is not there.
  */
-import { createServer } from 'node:http';
-import { readFile } from 'node:fs/promises';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, extname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { startFixtureServer } from './lib/fixture-server.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(HERE, '..');
@@ -38,26 +37,7 @@ try {
   process.exit(1);
 }
 
-const TYPES = { '.html': 'text/html; charset=utf-8' };
-const server = createServer(async (req, res) => {
-  const path = (req.url ?? '/').split('?')[0];
-  const file = join(FIXTURES, path === '/' ? 'fixtures.html' : path);
-  if (!file.startsWith(FIXTURES)) {
-    res.writeHead(403).end();
-    return;
-  }
-  let body;
-  try {
-    body = await readFile(file);
-  } catch {
-    res.writeHead(404).end('not found');
-    return;
-  }
-  res.writeHead(200, { 'content-type': TYPES[extname(file)] ?? 'text/plain' }).end(body);
-});
-
-await new Promise((done) => server.listen(0, '127.0.0.1', done));
-const base = `http://127.0.0.1:${server.address().port}`;
+const { base, crossOrigin, close: closeServer } = await startFixtureServer();
 const userDataDir = mkdtempSync(join(tmpdir(), 'draft-rescue-dev-'));
 
 let failures = 0;
@@ -90,7 +70,7 @@ if (!sw) sw = await ctx.waitForEvent('serviceworker', { timeout: 20000 }).catch(
 if (!sw) {
   console.log('  FAIL  service worker never registered');
   await ctx.close();
-  server.close();
+  closeServer();
   process.exit(1);
 }
 
@@ -164,7 +144,7 @@ check(
 check('an ordinary field is captured', rows.some((r) => r.text.includes('cover letter')));
 
 await ctx.close();
-server.close();
+closeServer();
 rmSync(userDataDir, { recursive: true, force: true });
 
 console.log(`\n${failures === 0 ? 'All dev-diagnostic checks passed.' : `${failures} check(s) FAILED.`}\n`);

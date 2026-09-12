@@ -17,6 +17,7 @@ function ctx(overrides: Partial<CaptureContext> = {}): CaptureContext {
     captureInIncognito: false,
     blockedOrigins: [],
     frameHostname: 'example.com',
+    frameOrigin: 'https://example.com',
     passwordMemory: new WeakSet<Element>(),
     ...overrides,
   };
@@ -347,6 +348,16 @@ describe('shouldCapture — refusals', () => {
     expect(shouldCapture(el, ctx())).toMatchObject({
       capture: false,
       reason: 'our-own-ui',
+    });
+  });
+
+  it('refuses a sandboxed frame, which has no origin to file a draft under', () => {
+    const el = mount('<textarea data-t name="body"></textarea>');
+    // Every sandboxed frame on every site reports "null" here, so storing
+    // under it would mix unrelated sites into one bucket.
+    expect(shouldCapture(el, ctx({ frameOrigin: 'null' }))).toMatchObject({
+      capture: false,
+      reason: 'opaque-origin',
     });
   });
 

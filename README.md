@@ -7,9 +7,8 @@ failed form submit does not cost you an hour of writing.
 all — that is a design constraint, not an aspiration, and it is checkable from
 the built bundle.
 
-> Status: **Phase 4 — popup and settings**. Complete as a tool: it captures,
-> offers drafts back inline, and has a searchable history plus settings. What
-> remains is the test harness and the store submission pack.
+> Status: **Phase 5 — test harness**. Feature-complete and tested. What remains
+> is the store submission pack: icons, screenshots, and the listing copy.
 
 ---
 
@@ -43,6 +42,7 @@ correctly is the whole point of this project.
 | `npm run smoke:restore` | Checks restore works against real editor behaviour in Chrome |
 | `npm run smoke:prompt` | Checks the inline pill: placement, scrolling, clicking |
 | `npm run smoke:ui` | Drives the popup and options in a real browser |
+| `npm run fixtures` | Serves the fixture page (on two origins) to try by hand |
 | `npm run size` | Check the content script against its 20 KB gzipped budget |
 | `npm run icons` | Regenerate the placeholder icons |
 | `npm run zip` | Package for Chrome Web Store upload |
@@ -132,6 +132,31 @@ consoles.
 If you look for the line on `chrome://extensions` — you will not find it, and
 should not. Chrome blocks content scripts on its own pages, the Web Store, and
 other extensions' pages. That is a hard browser restriction.
+
+---
+
+## Testing
+
+| What | How |
+|---|---|
+| Pure logic | `npm test` — 411 unit tests |
+| The whole capture path | `npm run smoke` — a real Chrome, a real database |
+| The restore engine | `npm run smoke:restore` — against real editor behaviour |
+| The inline pill | `npm run smoke:prompt` — placement, scrolling, clicking |
+| Popup and settings | `npm run smoke:ui` |
+| The dev diagnostics | `npm run smoke:dev` |
+| Real sites | `test/MANUAL-CHECKLIST.md` — by hand, and it has to be |
+
+The last row is not laziness. Every site this extension exists for runs a
+different rich-text engine — Lexical, Quill, Draft.js, ProseMirror, Gutenberg —
+and a fixture that mimics Lexical is not Lexical. The checklist walks eight
+sites and asks the one question that finds real bugs: after restoring, is the
+text still there ten seconds and one keystroke later?
+
+`npm run fixtures` serves the local fixture page for the shapes that are awkward
+to find in the wild: open and closed shadow roots, same-origin, cross-origin and
+sandboxed iframes, a password field that toggles to `type="text"`, a checkout
+form, and a comment box containing a card number.
 
 ---
 
@@ -564,9 +589,12 @@ Documented as we hit them, not hidden:
 - **Closed Shadow DOM.** If a site attaches a shadow root with `mode: 'closed'`,
   its contents are invisible to us. This is rare and deliberate on the site's
   part. There is no workaround that is not a hack.
-- **Sandboxed iframes.** An iframe with a `sandbox` attribute that omits
-  `allow-same-origin` gets an opaque origin; we are injected but have no useful
-  storage identity there.
+- ~~**Sandboxed iframes.**~~ Listed here for four phases as unsupported, on the
+  reasoning that a `sandbox` attribute without `allow-same-origin` gives the
+  frame an opaque origin and so no identity to file a draft under. A test
+  proved otherwise: a content script runs in an isolated world, which does not
+  inherit that opaque origin, so `location.origin` still reports the document's
+  real one and sandboxed frames are captured normally.
 - **Text below 15 characters** is not stored. It is not a draft — but it does
   mean that typing something short, deleting it, and asking for a restore hands
   back the last thing that *was* long enough, which can be surprising. Hover the
@@ -575,8 +603,9 @@ Documented as we hit them, not hidden:
   Phase 2 (engine) and Phase 3 (the inline prompt).
 - **Cross-origin iframes are *not* a limitation.** Chrome injects a separate
   copy of the content script into each frame, so we capture inside them
-  normally. What is impossible — and unnecessary for us — is reaching into a
-  cross-origin iframe from the top frame's script.
+  normally, filed under the frame's own origin. What is impossible — and
+  unnecessary for us — is reaching into a cross-origin iframe from the top
+  frame's script. `npm run smoke` proves this against a second real origin.
 
 ---
 

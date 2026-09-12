@@ -24,6 +24,7 @@ export type RefusalReason =
   | 'payment-origin'
   | 'blocked-origin'
   | 'incognito'
+  | 'opaque-origin'
   | 'our-own-ui';
 
 export type CaptureDecision =
@@ -47,6 +48,21 @@ export interface CaptureContext {
   blockedOrigins: readonly string[];
   /** This frame's hostname — not the top page's. Matters inside iframes. */
   frameHostname: string;
+  /**
+   * This frame's origin, or the string "null" where there is no real one.
+   *
+   * Defensive rather than load-bearing. The obvious case for it — a sandboxed
+   * iframe, whose document has an opaque origin — turns out not to need it: a
+   * content script runs in an isolated world, which does not inherit that
+   * opaque origin, so location.origin still reports the document's real one and
+   * sandboxed frames are captured normally. (That was documented as a
+   * limitation for four phases before a test checked it.)
+   *
+   * The check stays because an origin-less context would otherwise file drafts
+   * under "null", where every unrelated site's text would share one bucket that
+   * the user could neither recognise nor block.
+   */
+  frameOrigin: string;
   /**
    * Elements we have ever seen as `input[type="password"]`.
    *
@@ -220,6 +236,12 @@ export function shouldCapture(el: Element | null, ctx: CaptureContext): CaptureD
   // separate deliberate acts by the user.
   if (ctx.incognito && !ctx.captureInIncognito) {
     return { capture: false, reason: 'incognito' };
+  }
+
+  // No origin means no identity to file a draft under, and none the user could
+  // recognise or block. See the note on frameOrigin for why this is defensive.
+  if (!ctx.frameOrigin || ctx.frameOrigin === 'null') {
+    return { capture: false, reason: 'opaque-origin' };
   }
 
   for (const suffix of PAYMENT_ORIGIN_SUFFIXES) {
