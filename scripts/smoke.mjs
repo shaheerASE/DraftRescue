@@ -249,6 +249,50 @@ check(
   new Set(letterVersions.map((r) => r.fieldKey)).size === 1,
 );
 
+// --- The blocklist actually blocks ------------------------------------------
+// Closes the loop between the options page and the capture gate: a setting
+// that persists but does not take effect is worse than no setting at all,
+// because the user believes they are protected.
+{
+  await sw.evaluate(async () => {
+    await chrome.storage.local.set({
+      settings: { blockedOrigins: ['127.0.0.1'] },
+    });
+  });
+
+  const blocked = await ctx.newPage();
+  await blocked.goto(`${base}/fixtures.html`, { waitUntil: 'load' });
+  await blocked
+    .locator('#ta')
+    .pressSequentially('This must never be stored, the site is blocked.', { delay: 1 });
+  await blocked.waitForTimeout(SETTLE_MS);
+
+  const afterBlock = await sw.evaluate(async () => {
+    const db = await new Promise((res, rej) => {
+      const req = indexedDB.open('draft-rescue');
+      req.onsuccess = () => res(req.result);
+      req.onerror = () => rej(req.error);
+    });
+    const all = await new Promise((res, rej) => {
+      const req = db.transaction('snapshots').objectStore('snapshots').getAll();
+      req.onsuccess = () => res(req.result);
+      req.onerror = () => rej(req.error);
+    });
+    db.close();
+    return all;
+  });
+
+  check(
+    'a blocked site is not captured, even for a field that would otherwise be',
+    !afterBlock.some((r) => r.text.includes('the site is blocked')),
+  );
+  check(
+    'and blocking does not delete what was already saved',
+    afterBlock.length >= rows.length,
+    `had ${rows.length}, now ${afterBlock.length}`,
+  );
+}
+
 await ctx.close();
 server.close();
 rmSync(userDataDir, { recursive: true, force: true });

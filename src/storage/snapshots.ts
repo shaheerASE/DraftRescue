@@ -247,6 +247,101 @@ export async function getStats(): Promise<StorageStats> {
   return { snapshots: meta?.snapshots ?? 0, bytes: meta?.bytes ?? 0, fields };
 }
 
+export interface QueryOptions {
+  /** Case-insensitive substring match against the draft text and the site. */
+  search?: string;
+  /** Restrict to one site. */
+  origin?: string;
+  limit?: number;
+}
+
+/**
+ * Newest-first snapshots for the popup.
+ *
+ * Filtering happens in a cursor rather than by loading everything and calling
+ * .filter(): IndexedDB has no text index, so a search has to read rows either
+ * way — but a cursor stops the moment it has enough, which for the common case
+ * (a search that matches something recent) reads a handful of rows instead of
+ * every row in the database.
+ */
+export async function querySnapshots(options: QueryOptions = {}): Promise<Snapshot[]> {
+  const { search, origin, limit = 200 } = options;
+  const needle = search?.trim().toLowerCase();
+
+  const db = await getDb();
+  const rows: Snapshot[] = [];
+
+  let cursor = await db
+    .transaction('snapshots')
+    .store.index('by-created')
+    .openCursor(null, 'prev');
+
+  while (cursor && rows.length < limit) {
+    const row = cursor.value;
+    const matchesOrigin = !origin || row.signals.origin === origin;
+    const matchesSearch =
+      !needle ||
+      row.text.toLowerCase().includes(needle) ||
+      row.signals.origin.toLowerCase().includes(needle) ||
+      (row.signals.fieldName ?? '').toLowerCase().includes(needle) ||
+      (row.signals.labelText ?? '').toLowerCase().includes(needle);
+
+    if (matchesOrigin && matchesSearch) rows.push(row);
+    cursor = await cursor.continue();
+  }
+
+  return rows;
+}
+
+export async function deleteSnapshot(id: number): Promise<boolean> {
+  const db = await getDb();
+  const tx = db.transaction(['snapshots', 'meta'], 'readwrite');
+  const store = tx.objectStore('snapshots');
+
+  const row = await store.get(id);
+  if (!row) {
+    await tx.done;
+    return false;
+  }
+
+  await store.delete(id);
+
+  const meta = tx.objectStore('meta');
+  const stats = (await meta.get(STATS_KEY)) ?? { bytes: 0, snapshots: 0 };
+  stats.bytes = Math.max(0, stats.bytes - row.bytes);
+  stats.snapshots = Math.max(0, stats.snapshots - 1);
+  await meta.put(stats, STATS_KEY);
+
+  await tx.done;
+  return true;
+}
+
+/** Forget one site entirely. */
+export async function deleteOrigin(origin: string): Promise<number> {
+  const db = await getDb();
+  const tx = db.transaction(['snapshots', 'meta'], 'readwrite');
+  const meta = tx.objectStore('meta');
+  const stats = (await meta.get(STATS_KEY)) ?? { bytes: 0, snapshots: 0 };
+
+  let removed = 0;
+  let cursor = await tx
+    .objectStore('snapshots')
+    .index('by-origin')
+    .openCursor(IDBKeyRange.only(origin));
+
+  while (cursor) {
+    stats.bytes = Math.max(0, stats.bytes - cursor.value.bytes);
+    stats.snapshots = Math.max(0, stats.snapshots - 1);
+    removed++;
+    await cursor.delete();
+    cursor = await cursor.continue();
+  }
+
+  await meta.put(stats, STATS_KEY);
+  await tx.done;
+  return removed;
+}
+
 export async function deleteAll(): Promise<void> {
   const db = await getDb();
   const tx = db.transaction(['snapshots', 'meta'], 'readwrite');

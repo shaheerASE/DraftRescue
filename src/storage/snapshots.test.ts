@@ -5,9 +5,12 @@ import type { CapturePayload, FieldSignals } from '../shared/types';
 import { closeDb, DB_NAME, resetDbConnectionForTests } from './db';
 import {
   deleteAll,
+  deleteOrigin,
+  deleteSnapshot,
   evictOldest,
   getStats,
   purgeExpired,
+  querySnapshots,
   recentSnapshots,
   versionsOfField,
   writeSnapshot,
@@ -302,6 +305,123 @@ describe('deleteAll', () => {
 
     expect(await getStats()).toEqual({ snapshots: 0, bytes: 0, fields: 0 });
     expect(await recentSnapshots(10)).toHaveLength(0);
+  });
+});
+
+describe('querySnapshots — what the popup reads', () => {
+  async function seed() {
+    const base = Date.now();
+    await writeSnapshot(
+      payload({
+        fieldKey: 'a',
+        text: 'Dear hiring manager, about the frontend role.',
+        capturedAt: base,
+      }),
+      settings(),
+    );
+    await writeSnapshot(
+      payload({
+        fieldKey: 'b',
+        signals: signals({ origin: 'https://www.reddit.com', pathname: '/r/webdev' }),
+        text: 'Manifest V3 service workers are ephemeral, which changes everything.',
+        capturedAt: base + 1000,
+      }),
+      settings(),
+    );
+    await writeSnapshot(
+      payload({
+        fieldKey: 'c',
+        text: 'A third draft about something else entirely here.',
+        capturedAt: base + 2000,
+      }),
+      settings(),
+    );
+  }
+
+  it('returns everything newest first', async () => {
+    await seed();
+    const rows = await querySnapshots();
+    expect(rows).toHaveLength(3);
+    expect(rows[0]?.text).toContain('A third draft');
+  });
+
+  it('matches on the draft text', async () => {
+    await seed();
+    const rows = await querySnapshots({ search: 'ephemeral' });
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.text).toContain('Manifest V3');
+  });
+
+  it('matches regardless of case', async () => {
+    await seed();
+    expect(await querySnapshots({ search: 'DEAR HIRING' })).toHaveLength(1);
+  });
+
+  it('matches on the site, so you can search where you were writing', async () => {
+    await seed();
+    const rows = await querySnapshots({ search: 'reddit' });
+    expect(rows).toHaveLength(1);
+  });
+
+  it('returns nothing for a search that matches nothing', async () => {
+    await seed();
+    expect(await querySnapshots({ search: 'zzzznothing' })).toEqual([]);
+  });
+
+  it('can be scoped to one site', async () => {
+    await seed();
+    const rows = await querySnapshots({ origin: 'https://www.reddit.com' });
+    expect(rows).toHaveLength(1);
+  });
+
+  it('respects the limit', async () => {
+    await seed();
+    expect(await querySnapshots({ limit: 2 })).toHaveLength(2);
+  });
+});
+
+describe('deleteSnapshot and deleteOrigin', () => {
+  it('deletes one draft and keeps the byte total honest', async () => {
+    await writeSnapshot(payload(), settings());
+    const [row] = await querySnapshots();
+    const before = await getStats();
+
+    expect(await deleteSnapshot(row!.id!)).toBe(true);
+
+    const after = await getStats();
+    expect(after.snapshots).toBe(before.snapshots - 1);
+    expect(after.bytes).toBe(before.bytes - row!.bytes);
+  });
+
+  it('reports false for an id that is not there', async () => {
+    expect(await deleteSnapshot(99999)).toBe(false);
+  });
+
+  it('forgets a whole site without touching the others', async () => {
+    await writeSnapshot(payload({ fieldKey: 'a' }), settings());
+    await writeSnapshot(
+      payload({
+        fieldKey: 'b',
+        signals: signals({ origin: 'https://www.reddit.com' }),
+        text: 'a draft on another site entirely',
+      }),
+      settings(),
+    );
+
+    expect(await deleteOrigin('https://www.reddit.com')).toBe(1);
+
+    const rows = await querySnapshots();
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.signals.origin).toBe('https://www.upwork.com');
+
+    const stats = await getStats();
+    expect(stats.bytes).toBe(rows[0]!.bytes);
+  });
+
+  it('is a no-op for a site with nothing stored', async () => {
+    await writeSnapshot(payload(), settings());
+    expect(await deleteOrigin('https://nothing.test')).toBe(0);
+    expect((await getStats()).snapshots).toBe(1);
   });
 });
 

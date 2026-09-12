@@ -1,28 +1,177 @@
 @import 'tailwindcss';
 
-/* Tailwind v4 keeps the design tokens in CSS, not in a JS config file.
-   Anything defined in @theme becomes a utility class automatically:
-   --color-ink-500 here gives you `bg-ink-500`, `text-ink-500`, etc. */
-@theme {
-  --color-ink-50: #f5f6fa;
-  --color-ink-100: #e8eaf2;
-  --color-ink-300: #a9afc6;
-  --color-ink-500: #5b6187;
-  --color-ink-700: #2f3350;
-  --color-ink-900: #171a2c;
+/*
+ * DESIGN DIRECTION: a precision instrument.
+ *
+ * Someone opens this having just lost an hour of writing. The interface has one
+ * job at that moment — let them find their words and get them back — and every
+ * decision here serves being read quickly under mild stress rather than being
+ * admired. Dense, quiet, legible. Closer to a measuring tool than to an app.
+ *
+ * TYPOGRAPHY, AND A CONSTRAINT WORTH KNOWING
+ * There are no web fonts anywhere in this extension, and there cannot be: we
+ * promise zero network requests, and fetching a font from Google would break
+ * that promise for a decorative reason. The palette of typefaces is therefore
+ * whatever is already on the machine.
+ *
+ * Rather than settle for a generic system stack, the constraint is put to work:
+ *
+ *   The instrument is MONOSPACE — every label, count, timestamp and size. It
+ *   reads as measurement, and tabular figures mean a column of numbers lines up
+ *   and can be scanned rather than read.
+ *
+ *   The content is SERIF — the drafts themselves, the user's own prose. A
+ *   different voice for the thing being recovered than for the machinery around
+ *   it, so the eye separates them without a box or a rule doing that work.
+ *
+ * COLOUR
+ * One accent — amber, the colour of a warning lamp rather than a brand —
+ * reserved strictly for the recoverable thing and the primary action. Nothing
+ * else in the interface is allowed to be saturated, so the one thing that is
+ * draws the eye immediately.
+ */
 
-  --color-rescue-400: #7c8cff;
-  --color-rescue-500: #5a6cf5;
-  --color-rescue-600: #4553d6;
+/* --- Dark, the default ----------------------------------------------------- */
+:root {
+  color-scheme: dark;
+
+  /* Graphite, warm-shifted so it does not read as blue-black. */
+  --surface: #0e0f12;
+  --surface-raised: #16181d;
+  --surface-sunken: #0a0b0d;
+  --surface-hover: #1e2127;
+  --surface-active: #262a31;
+
+  --line: #272a31;
+  --line-strong: #363a43;
+
+  --text: #e4e6ea;
+  --text-muted: #969ba6;
+  --text-faint: #6b707b;
+
+  --accent: #f0a355;
+  --accent-strong: #f7c68f;
+  --accent-dim: #6a4a22;
+  --on-accent: #1a1206;
+
+  --alarm: #e0655a;
+  --alarm-dim: #5c2a26;
 }
 
-/* These two surfaces are our own pages, so we control the whole box model.
-   The popup has no viewport of its own — Chrome sizes it to the content, which
-   is why width is pinned here rather than left to the browser. */
+/* --- Light ----------------------------------------------------------------- */
+@media (prefers-color-scheme: light) {
+  :root {
+    color-scheme: light;
+
+    /* Warm paper, not white: this sits next to documents all day. */
+    --surface: #f6f4f0;
+    --surface-raised: #fffefb;
+    --surface-sunken: #eceae4;
+    --surface-hover: #efece6;
+    --surface-active: #e5e1d9;
+
+    --line: #ddd8ce;
+    --line-strong: #c6c0b3;
+
+    --text: #1e2026;
+    --text-muted: #5f636d;
+    --text-faint: #8b8f99;
+
+    --accent: #a85d08;
+    --accent-strong: #85490a;
+    --accent-dim: #f0dcc0;
+    --on-accent: #fffdf8;
+
+    --alarm: #b03a30;
+    --alarm-dim: #f2d6d2;
+  }
+}
+
+/*
+ * `inline` matters here. Without it Tailwind copies each value into the utility
+ * at build time, freezing the dark palette in place; with it the utility emits
+ * `var(--surface)` and the light theme above can still take effect at runtime.
+ */
+@theme inline {
+  --color-surface: var(--surface);
+  --color-raised: var(--surface-raised);
+  --color-sunken: var(--surface-sunken);
+  --color-hover: var(--surface-hover);
+  --color-active: var(--surface-active);
+
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+
+  --color-text: var(--text);
+  --color-muted: var(--text-muted);
+  --color-faint: var(--text-faint);
+
+  --color-accent: var(--accent);
+  --color-accent-strong: var(--accent-strong);
+  --color-accent-dim: var(--accent-dim);
+  --color-on-accent: var(--on-accent);
+
+  --color-alarm: var(--alarm);
+  --color-alarm-dim: var(--alarm-dim);
+
+  --font-mono:
+    ui-monospace, 'SF Mono', 'SFMono-Regular', 'Cascadia Mono', 'Segoe UI Mono',
+    'DejaVu Sans Mono', 'Liberation Mono', Menlo, Consolas, monospace;
+  --font-serif:
+    ui-serif, Charter, 'Bitstream Charter', 'Iowan Old Style', Georgia,
+    'Liberation Serif', 'Times New Roman', serif;
+}
+
 html,
 body {
   margin: 0;
-  font-family:
-    ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  background: var(--surface);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
   -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* Scrollbars, so the list does not sprout a browser-coloured bar mid-panel. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-strong) transparent;
+}
+
+::selection {
+  background: var(--accent-dim);
+  color: var(--text);
+}
+
+/*
+ * One orchestrated entrance rather than motion scattered through the interface.
+ * Rows stagger in on open; after that the surface holds still, because a list
+ * someone is scanning for their own words should not be moving.
+ */
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(3px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.rise {
+  animation: rise 240ms cubic-bezier(0.2, 0.7, 0.3, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rise {
+    animation: none;
+  }
+}
+
+/* Focus that is visible on both themes without a heavy ring. */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
 }

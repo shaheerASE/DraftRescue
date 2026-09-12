@@ -4,8 +4,12 @@ import { readSettings } from '../src/shared/settings';
 import { MESSAGE, type ExtensionMessage } from '../src/shared/types';
 import { rankFieldCandidates } from '../src/match/score';
 import {
+  deleteAll,
+  deleteOrigin,
+  deleteSnapshot,
   getStats,
   purgeExpired,
+  querySnapshots,
   recentSnapshots,
   snapshotsForOrigin,
   writeSnapshot,
@@ -145,6 +149,64 @@ export default defineBackground(() => {
         } catch (error) {
           console.error('[Draft Rescue] recent failed', error);
           sendResponse([]);
+        }
+      })();
+      return true;
+    }
+
+    // --- The popup's read and write path ------------------------------------
+    // The popup is a page in the extension's own origin, so it COULD open
+    // IndexedDB itself. It goes through the worker anyway, so that there stays
+    // exactly one piece of code that knows the schema and keeps the byte
+    // totals honest.
+    if (msg?.kind === MESSAGE.query) {
+      void (async () => {
+        try {
+          const options: Parameters<typeof querySnapshots>[0] = {};
+          if (msg.search !== undefined) options.search = msg.search;
+          if (msg.origin !== undefined) options.origin = msg.origin;
+          if (msg.limit !== undefined) options.limit = msg.limit;
+          sendResponse(await querySnapshots(options));
+        } catch (error) {
+          console.error('[Draft Rescue] query failed', error);
+          sendResponse([]);
+        }
+      })();
+      return true;
+    }
+
+    if (msg?.kind === MESSAGE.deleteOne) {
+      void (async () => {
+        try {
+          sendResponse(await deleteSnapshot(msg.id));
+        } catch (error) {
+          console.error('[Draft Rescue] delete failed', error);
+          sendResponse(false);
+        }
+      })();
+      return true;
+    }
+
+    if (msg?.kind === MESSAGE.deleteSite) {
+      void (async () => {
+        try {
+          sendResponse(await deleteOrigin(msg.origin));
+        } catch (error) {
+          console.error('[Draft Rescue] delete site failed', error);
+          sendResponse(0);
+        }
+      })();
+      return true;
+    }
+
+    if (msg?.kind === MESSAGE.deleteAll) {
+      void (async () => {
+        try {
+          await deleteAll();
+          sendResponse(true);
+        } catch (error) {
+          console.error('[Draft Rescue] delete all failed', error);
+          sendResponse(false);
         }
       })();
       return true;

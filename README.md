@@ -7,9 +7,9 @@ failed form submit does not cost you an hour of writing.
 all — that is a design constraint, not an aspiration, and it is checkable from
 the built bundle.
 
-> Status: **Phase 3 — the inline prompt**. Focus an empty field it holds a draft
-> for and a small pill offers it back. Browsing history, search and settings land
-> in Phase 4.
+> Status: **Phase 4 — popup and settings**. Complete as a tool: it captures,
+> offers drafts back inline, and has a searchable history plus settings. What
+> remains is the test harness and the store submission pack.
 
 ---
 
@@ -42,6 +42,7 @@ correctly is the whole point of this project.
 | `npm run smoke:dev` | Checks the dev diagnostics report real problems and only those |
 | `npm run smoke:restore` | Checks restore works against real editor behaviour in Chrome |
 | `npm run smoke:prompt` | Checks the inline pill: placement, scrolling, clicking |
+| `npm run smoke:ui` | Drives the popup and options in a real browser |
 | `npm run size` | Check the content script against its 20 KB gzipped budget |
 | `npm run icons` | Regenerate the placeholder icons |
 | `npm run zip` | Package for Chrome Web Store upload |
@@ -297,6 +298,39 @@ writes it.
 **Scoring runs in the service worker, restoring runs in the content script.**
 Scoring needs no DOM and the content script pays for every byte on every page
 the user visits. Restoring needs the live element, so it has no choice.
+
+---
+
+## The popup and settings
+
+Click the toolbar icon for everything ever saved: grouped by site, then by page,
+newest first. Search runs across the draft text, the site and the field's label.
+Per draft: click the preview to expand it, copy it, or delete it. Per site:
+forget the whole site. At the bottom: delete everything, behind a confirmation.
+
+Settings live in a full tab — pause capture, choose how long drafts are kept
+(1 / 7 / 30 days / forever), block sites, and see exactly how much is stored.
+
+### Why it looks the way it does
+
+Someone opens this having just lost an hour of writing. The interface has one
+job at that moment — let them find their words and get them back — so it is
+built to be read quickly under mild stress rather than to be admired.
+
+**There are no web fonts, and there cannot be.** Loading one from Google would
+break the zero-network promise for a decorative reason. That constraint is put
+to work rather than worked around: the instrument is **monospace** — every
+label, count, timestamp and size, with tabular figures so a column of numbers
+lines up and can be scanned — and the drafts themselves are set in **serif**, a
+different voice for your own prose than for the machinery around it.
+
+One accent, amber, the colour of a warning lamp rather than a brand, reserved
+for the recoverable thing and the primary action. Nothing else is allowed to be
+saturated, so the one thing that is draws the eye. Both a light and a dark theme
+follow the system setting.
+
+Grouping by site rather than listing by time is deliberate: people remember
+*where* they were writing long before they remember *when*.
 
 ---
 

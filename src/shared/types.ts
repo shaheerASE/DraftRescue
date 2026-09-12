@@ -69,13 +69,21 @@ export const MESSAGE = {
   stats: 'draft-rescue/stats',
   recent: 'draft-rescue/recent',
   candidates: 'draft-rescue/candidates',
+  query: 'draft-rescue/query',
+  deleteOne: 'draft-rescue/delete-one',
+  deleteSite: 'draft-rescue/delete-site',
+  deleteAll: 'draft-rescue/delete-all',
 } as const;
 
 export type ExtensionMessage =
   | { kind: typeof MESSAGE.capture; payload: CapturePayload }
   | { kind: typeof MESSAGE.stats }
   | { kind: typeof MESSAGE.recent; limit?: number }
-  | { kind: typeof MESSAGE.candidates; signals: FieldSignals; limit?: number };
+  | { kind: typeof MESSAGE.candidates; signals: FieldSignals; limit?: number }
+  | { kind: typeof MESSAGE.query; search?: string; origin?: string; limit?: number }
+  | { kind: typeof MESSAGE.deleteOne; id: number }
+  | { kind: typeof MESSAGE.deleteSite; origin: string }
+  | { kind: typeof MESSAGE.deleteAll };
 
 export interface StorageStats {
   snapshots: number;
