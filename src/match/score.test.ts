@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { FieldSignals, Snapshot } from '../shared/types';
 import {
   bestMatch,
+  bestVersionToOffer,
   domPathSimilarity,
   MATCH_THRESHOLD,
   rankFieldCandidates,
@@ -199,6 +200,69 @@ describe('rankFieldCandidates', () => {
       snapshot({ fieldKey: `f${i}`, signals: signals({ fieldName: `field${i}` }) }),
     );
     expect(rankFieldCandidates(signals(), rows, 3)).toHaveLength(3);
+  });
+});
+
+describe('bestVersionToOffer', () => {
+  const base = Date.now();
+
+  it('offers the complete draft, not the fragment left behind while deleting', () => {
+    // The reported bug: type a long draft, backspace most of it away, come
+    // back, and the prompt handed over seventeen characters of seventy-seven.
+    const full = 'This is my actual long draft that took me ages to write.';
+    const versions = [
+      snapshot({ text: 'This is my actual', createdAt: base + 5000 }),
+      snapshot({ text: 'This is my actual long draft', createdAt: base + 3000 }),
+      snapshot({ text: full, createdAt: base }),
+    ];
+    expect(bestVersionToOffer(versions)?.text).toBe(full);
+  });
+
+  it('offers the newest when it is genuinely different work', () => {
+    // Someone who rewrote a sprawling draft into a tighter one wants the
+    // tighter one back, not last week's sprawl.
+    const rewrite = 'A completely different and much tighter draft.';
+    const versions = [
+      snapshot({ text: rewrite, createdAt: base + 5000 }),
+      snapshot({
+        text: 'An older, longer draft about something else entirely, at length.',
+        createdAt: base,
+      }),
+    ];
+    expect(bestVersionToOffer(versions)?.text).toBe(rewrite);
+  });
+
+  it('offers the only version when there is just one', () => {
+    const only = snapshot({ text: 'the one and only draft here' });
+    expect(bestVersionToOffer([only])).toBe(only);
+  });
+
+  it('returns undefined for an empty history', () => {
+    expect(bestVersionToOffer([])).toBeUndefined();
+  });
+
+  it('handles a remnant that sits in the middle of the fuller version', () => {
+    // Deleting from both ends, not just the tail.
+    const full = 'Opening line. The middle part that survived. Closing line.';
+    const versions = [
+      snapshot({ text: 'The middle part that survived.', createdAt: base + 1000 }),
+      snapshot({ text: full, createdAt: base }),
+    ];
+    expect(bestVersionToOffer(versions)?.text).toBe(full);
+  });
+});
+
+describe('rankFieldCandidates — what it offers', () => {
+  it('attaches the version worth offering, not simply the newest', () => {
+    const base = Date.now();
+    const full = 'The complete draft that the user actually wrote out in full.';
+    const rows = [
+      snapshot({ fieldKey: 'a', text: full, createdAt: base }),
+      snapshot({ fieldKey: 'a', text: 'The complete draft', createdAt: base + 2000 }),
+    ];
+    const [candidate] = rankFieldCandidates(signals(), rows);
+    expect(candidate?.versions[0]?.text).toBe('The complete draft'); // newest
+    expect(candidate?.offer.text).toBe(full); // but this is what to hand back
   });
 });
 

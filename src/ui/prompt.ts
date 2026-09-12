@@ -117,8 +117,8 @@ const STYLES = `
 `;
 
 export interface RestorePrompt {
-  /** Offer `savedAt`'s draft for `field`. Replaces any prompt already showing. */
-  show(field: Element, savedAt: number, onActivate: () => void): void;
+  /** Offer a draft for `field`. Replaces any prompt already showing. */
+  show(field: Element, savedAt: number, text: string, onActivate: () => void): void;
   hide(): void;
   /** Tear down entirely. */
   destroy(): void;
@@ -293,7 +293,7 @@ export function createRestorePrompt(doc: Document = document): RestorePrompt {
   }
 
   return {
-    show(nextField, savedAt, onActivate) {
+    show(nextField, savedAt, text, onActivate) {
       build();
       if (!pill || !label) return;
 
@@ -305,7 +305,14 @@ export function createRestorePrompt(doc: Document = document): RestorePrompt {
       const when = relativeTime(savedAt);
       label.textContent = `Restore draft (${when})`;
       pill.setAttribute('aria-label', `Restore the draft saved ${when}`);
-      pill.title = `Draft Rescue — restore the draft saved ${when}`;
+
+      // The tooltip shows WHAT will come back, not just when it was saved.
+      // Without it the pill asks for a click on an unknown quantity, and the
+      // first thing a person wonders on seeing the result is whether the
+      // extension picked the wrong draft.
+      const preview = text.replace(/\s+/g, ' ').trim();
+      const shown = preview.length > 180 ? `${preview.slice(0, 180)}\u2026` : preview;
+      pill.title = `Draft Rescue \u2014 saved ${when}, ${text.length} characters\n\n${shown}`;
 
       startTracking();
       // Measure after the label is in place, so the pill's width is final.

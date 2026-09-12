@@ -141,6 +141,48 @@ describe('writeSnapshot — version history', () => {
     expect(versions[1]?.text).toContain('they will delete');
   });
 
+  it('never evicts the most complete version, however much is deleted', async () => {
+    // The bug this exists for: deleting a draft is not one event. Someone
+    // backspacing through it, pausing to think, saves a shorter version at
+    // every pause. Under a plain "keep newest 10", ten pauses filled all ten
+    // slots with fragments and evicted the complete draft as the oldest — so
+    // the one action that loses a person's writing was also what destroyed our
+    // copy of it.
+    const base = Date.now();
+    const full = 'This is my actual long draft that took me ages to write and must not be lost.';
+
+    await writeSnapshot(payload({ text: full, capturedAt: base }), settings());
+
+    // Now delete it, a chunk at a time, with a save at every pause.
+    for (let i = 1; i <= 20; i++) {
+      const shorter = full.slice(0, Math.max(16, full.length - i * 3));
+      await writeSnapshot(
+        payload({ text: shorter, capturedAt: base + i * 1000 }),
+        settings({ versionsPerField: 10 }),
+      );
+    }
+
+    const versions = await versionsOfField('field-a', 50);
+    expect(versions).toHaveLength(10);
+    expect(versions.some((v) => v.text === full)).toBe(true);
+  });
+
+  it('still drops ordinary old versions when nothing is being deleted', async () => {
+    // The protection is for the high-water mark only; growing drafts should
+    // still roll over normally.
+    const base = Date.now();
+    for (let i = 0; i < 15; i++) {
+      await writeSnapshot(
+        payload({ text: `version ${i} `.padEnd(20 + i, 'x'), capturedAt: base + i * 1000 }),
+        settings({ versionsPerField: 10 }),
+      );
+    }
+    const versions = await versionsOfField('field-a', 50);
+    expect(versions).toHaveLength(10);
+    // The newest is always kept.
+    expect(versions[0]?.text).toContain('version 14');
+  });
+
   it('counts versions per field, not globally', async () => {
     const base = Date.now();
     for (let i = 0; i < 12; i++) {

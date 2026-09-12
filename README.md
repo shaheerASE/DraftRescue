@@ -343,6 +343,21 @@ intercepting taps on whatever is underneath. `visibility` and `pointer-events`
 make it genuinely inert; a delayed visibility transition lets the fade finish
 first.
 
+### What it offers back
+
+Not simply the newest version. Deleting a draft is not one event: someone
+backspacing through it, pausing to think, produces a save at every pause, each
+shorter than the last. "The newest" would hand back the last fragment before the
+box went empty.
+
+So the rule is: if the newest text appears **inside** an older, longer version,
+the newest is a remnant of that version and the longer one is offered instead.
+If it does not appear inside any of them, it is genuinely different work and
+stands on its own — someone who rewrote a sprawling draft into a tighter one
+wants the tighter one back.
+
+Hovering the pill shows what will be restored, and how long it is.
+
 ### Known gap
 
 The pill is a real `<button>` with an `aria-label`, but it cannot currently be
@@ -495,7 +510,10 @@ Documented as we hit them, not hidden:
 - **Sandboxed iframes.** An iframe with a `sandbox` attribute that omits
   `allow-same-origin` gets an opaque origin; we are injected but have no useful
   storage identity there.
-- **Text below 15 characters** is not stored. It is not a draft.
+- **Text below 15 characters** is not stored. It is not a draft — but it does
+  mean that typing something short, deleting it, and asking for a restore hands
+  back the last thing that *was* long enough, which can be surprising. Hover the
+  pill to see what it is offering.
 - **No restore yet.** Phase 1 captures only. Getting text back arrives in
   Phase 2 (engine) and Phase 3 (the inline prompt).
 - **Cross-origin iframes are *not* a limitation.** Chrome injects a separate

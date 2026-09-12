@@ -74,20 +74,47 @@ export async function writeSnapshot(
   stats.bytes += snapshot.bytes;
   stats.snapshots += 1;
 
-  // --- Keep only the newest N versions of this field ------------------------
+  // --- Keep the newest N versions, AND the longest one ever ------------------
+  //
   // Versions, plural, on purpose: the paragraph the user deleted five minutes
-  // ago is exactly the thing they want back, and a single latest-only row
-  // would have overwritten it.
+  // ago is exactly the thing they want back, and a single latest-only row would
+  // have overwritten it.
+  //
+  // But "newest N" alone gets this exactly backwards, and it took a real
+  // reproduction to see why. Deleting a draft is not one event — someone
+  // backspacing through it, pausing to think, produces a save every time they
+  // pause. Each save is shorter than the last. Ten pauses and all ten slots
+  // hold progressively shorter fragments, with the complete draft evicted as
+  // the "oldest".
+  //
+  // So the exact action that loses a person's writing was also what destroyed
+  // our copy of it. The one moment the history exists for is the one moment it
+  // threw the history away.
+  //
+  // The longest version a field has ever held is therefore protected from
+  // eviction. It is the high-water mark: whatever else happens, the most
+  // complete thing the user ever wrote in this box survives.
   let evicted = 0;
   const keep = Math.max(1, settings.versionsPerField);
-  const overflow = existing.length + 1 - keep;
-  for (let i = 0; i < overflow; i++) {
-    const victim = existing[i];
+
+  let longest: Snapshot | null = null;
+  for (const candidate of existing) {
+    if (!longest || candidate.text.length > longest.text.length) longest = candidate;
+  }
+  // If the incoming text is the longest, nothing among the existing rows needs
+  // protecting — the new row is already the high-water mark.
+  if (longest && longest.text.length <= text.length) longest = null;
+
+  let toRemove = existing.length + 1 - keep;
+  for (const victim of existing) {
+    if (toRemove <= 0) break;
     if (!victim?.id) continue;
+    if (victim === longest) continue; // the high-water mark is not evictable
     await store.delete(victim.id);
     stats.bytes -= victim.bytes;
     stats.snapshots -= 1;
     evicted++;
+    toRemove--;
   }
 
   await meta.put(stats, STATS_KEY);

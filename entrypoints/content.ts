@@ -370,7 +370,9 @@ export default defineContentScript({
       if (!Array.isArray(ranked)) return;
 
       const best = ranked[0];
-      const snapshot = best?.versions[0];
+      // `offer`, not `versions[0]`: the newest version is often the last
+      // fragment left behind while deleting, not the draft worth handing back.
+      const snapshot = best?.offer;
       if (!best || !snapshot || best.score < MATCH_THRESHOLD) return;
 
       // Re-check both conditions after the await: the field may have gained
@@ -378,7 +380,7 @@ export default defineContentScript({
       if (readFieldText(el, kind).trim() !== '') return;
       if (lastFocusedField !== el) return;
 
-      prompt.show(el, snapshot.createdAt, () => {
+      prompt.show(el, snapshot.createdAt, snapshot.text, () => {
         // NEVER automatic. This only runs from a click on the pill.
         const result = restoreInto(el, kind, snapshot.text);
         if (import.meta.env.DEV) {

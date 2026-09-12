@@ -228,6 +228,44 @@ export interface FieldCandidate {
   reasons: string[];
   /** Newest first. The spec's ten versions, so a deleted paragraph is reachable. */
   versions: Snapshot[];
+  /** The one version worth offering first. See bestVersionToOffer. */
+  offer: Snapshot;
+}
+
+/**
+ * Which single version should the restore prompt offer?
+ *
+ * "The newest" is the obvious answer and it is wrong in the case that matters
+ * most. Deleting a draft is not one event: someone backspacing through it,
+ * pausing to think, produces a save at every pause, each shorter than the last.
+ * The newest version is then the last fragment before the box went empty — so
+ * offering "the newest" hands back seventeen characters of a draft that was
+ * seventy-seven, and looks like the product simply failed.
+ *
+ * But "the longest" is wrong too. Someone who deliberately rewrote a long draft
+ * into a tighter one wants the tighter one back, not last week's sprawl.
+ *
+ * The rule that separates those two: if the newest text appears INSIDE an older,
+ * longer version, then the newest is a remnant of that version — what is left
+ * after deleting from it — and the longer one is strictly more complete. If it
+ * does not appear inside any of them, the newest is genuinely different work and
+ * stands on its own.
+ */
+export function bestVersionToOffer(versions: readonly Snapshot[]): Snapshot | undefined {
+  const newest = versions[0];
+  if (!newest) return undefined;
+
+  const remnant = newest.text.trim();
+  if (!remnant) return newest;
+
+  let best = newest;
+  for (const candidate of versions) {
+    if (candidate === newest) continue;
+    if (candidate.text.length <= best.text.length) continue;
+    if (candidate.text.includes(remnant)) best = candidate;
+  }
+
+  return best;
 }
 
 /**
@@ -257,7 +295,11 @@ export function rankFieldCandidates(
 
     const { score, reasons } = scoreFieldMatch(live, newest.signals);
     if (score <= 0) continue;
-    candidates.push({ fieldKey, score, reasons, versions });
+
+    const offer = bestVersionToOffer(versions);
+    if (!offer) continue;
+
+    candidates.push({ fieldKey, score, reasons, versions, offer });
   }
 
   candidates.sort((a, b) => b.score - a.score || (b.versions[0]?.createdAt ?? 0) - (a.versions[0]?.createdAt ?? 0));
