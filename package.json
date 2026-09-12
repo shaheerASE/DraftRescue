@@ -15,7 +15,9 @@
     "postinstall": "wxt prepare",
     "size": "node scripts/check-size.mjs",
     "icons": "node scripts/make-icons.mjs",
-    "smoke": "node scripts/smoke.mjs"
+    "smoke": "node scripts/smoke.mjs",
+    "build:dev": "wxt build -m development",
+    "smoke:dev": "node scripts/smoke-dev.mjs"
   },
   "dependencies": {
     "idb": "^8.0.3",

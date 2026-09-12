@@ -191,6 +191,19 @@
         '  </div>' +
         '</div>';
 
+      // Reddit's components re-dispatch the input event as themselves after the
+      // real one fires — the normal pattern for a form-associated custom element
+      // proxying its inner field. Reproduced here because those extra events
+      // resolve to no field, and we must not report them as a problem.
+      const composerHost = document.getElementById('reddit-like');
+      composerRoot
+        .querySelector('[contenteditable]')
+        .addEventListener('input', () => {
+          composerHost.dispatchEvent(
+            new InputEvent('input', { bubbles: true, composed: true }),
+          );
+        });
+
       // Closed shadow root: nothing outside can reach into this, us included.
       const closedRoot = document.getElementById('closed-host').attachShadow({ mode: 'closed' });
       closedRoot.innerHTML =

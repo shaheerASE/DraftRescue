@@ -115,10 +115,31 @@ export default defineContentScript({
      * Nothing can reach in — not us, not any extension. Worth saying out loud
      * rather than leaving as an unexplained silence.
      */
+    /**
+     * Is this element a component that merely re-announces a field we can
+     * already see inside it?
+     *
+     * Reddit does this: typing in the comment box produces the real `input`
+     * event on the contenteditable, and then <reddit-rte> and
+     * <shreddit-composer> each re-dispatch one as themselves. It is the normal
+     * pattern for a form-associated custom element proxying its inner field.
+     *
+     * Those extra events resolve to nothing, which is harmless — but reporting
+     * them as unresolved would send someone hunting for a bug that is not
+     * there. If the component's own open shadow root contains a field we would
+     * capture, the real event already reached us and this one is a duplicate.
+     */
+    function proxiesAVisibleField(el: Element): boolean {
+      const root = (el as Element & { shadowRoot?: ShadowRoot | null }).shadowRoot;
+      if (!root) return false;
+      return root.querySelector('textarea, input, [contenteditable]') !== null;
+    }
+
     function reportUnresolved(path: readonly EventTarget[]): void {
       const first = path[0] as Element | undefined;
       if (!first || typeof first.tagName !== 'string') return;
       if (explained.has(first)) return;
+      if (proxiesAVisibleField(first)) return;
       explained.add(first);
 
       // An `input` event always originates on an editable element. So if the

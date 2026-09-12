@@ -37,6 +37,8 @@ correctly is the whole point of this project.
 | `npm run compile` | Typecheck only (`tsc --noEmit`) |
 | `npm test` | Run the Vitest suite |
 | `npm run smoke` | End-to-end test: loads the built extension in a real Chrome |
+| `npm run build:dev` | Production-style build with the dev diagnostics left in |
+| `npm run smoke:dev` | Checks the dev diagnostics report real problems and only those |
 | `npm run size` | Check the content script against its 20 KB gzipped budget |
 | `npm run icons` | Regenerate the placeholder icons |
 | `npm run zip` | Package for Chrome Web Store upload |
@@ -194,6 +196,13 @@ You will see one of these:
 | `REFUSED <field> — payment-origin` / `payment-form` | We think this is a checkout. Intentional. |
 | `UNRESOLVED input event ... likelyClosedShadowRoot: true` | The field is inside a **closed** shadow root. No extension can see into one — see Known limitations. |
 | `UNRESOLVED input event ... likelyClosedShadowRoot: false` | The event came from something we do not recognise as a field. Worth reporting. |
+
+You will *not* see an `UNRESOLVED` line for a component that re-announces a
+field we can already see inside it. Reddit does this — typing in the comment box
+fires the real event on the `contenteditable`, and then `<reddit-rte>` and
+`<shreddit-composer>` each re-dispatch one as themselves. Those duplicates
+resolve to nothing and are ignored silently, because a debugging tool that cries
+wolf is worse than no tool.
 
 Three commands, in that same console context:
 
