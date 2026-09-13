@@ -14,6 +14,7 @@ What is ready, what still needs a person, and what to expect from review.
 | Listing copy | `store/LISTING.md` |
 | Source licence | `LICENSE` — GPL-3.0-or-later |
 | Source link for the listing | `store/LISTING.md` |
+| Design brief for icons and tiles | `store/DESIGN-BRIEF.md` |
 | Package | `npm run zip` → `.output/draft-rescue-0.1.0-chrome.zip` |
 
 ---
@@ -26,8 +27,11 @@ What is ready, what still needs a person, and what to expect from review.
 `scripts/make-icons.mjs`. They are geometry, not design: a rounded square with a
 circular arrow. They exist so the extension looks deliberate during development.
 
-**Get a designer.** The icon is the single most-seen thing about the extension
-and a generated one reads as unfinished.
+**Get a designer** — or use the prompt in [`DESIGN-BRIEF.md`](DESIGN-BRIEF.md),
+which carries the product context, the extension's own palette, and the
+constraint that actually decides the job: it has to read at 16 px. The icon is
+the single most-seen thing about the extension, and a generated one reads as
+unfinished.
 
 Sizes needed: 16, 32, 48, 128 px PNG. The 128 is what the store shows.
 
@@ -41,7 +45,8 @@ execution that needs a hand.
 
 ### 2. Screenshots
 
-Five, 1280×800 or 640×400 PNG. Captions in `store/LISTING.md`.
+Five, 1280×800 or 640×400 PNG. Captions in `store/LISTING.md`; a prompt for
+framing them consistently is in [`DESIGN-BRIEF.md`](DESIGN-BRIEF.md).
 
 Take them from the real extension with real-looking content. Do not mock them
 up — a screenshot that does not match what the extension does is a listing

@@ -42,8 +42,9 @@ vanished. Not before.
 | 2 | Choose GPL-3.0, add `LICENSE`, set `package.json` | [1 § Part A](1-LICENSING.md) |
 | 3 | Host `PRIVACY.md` at a real URL | [3 § Step 4](3-CHROME-WEB-STORE.md) |
 | 4 | Run `test/MANUAL-CHECKLIST.md` on **real sites** | — |
-| 5 | Commission icons | [3 § blockers](3-CHROME-WEB-STORE.md) |
+| 5 | Commission icons | [brief + prompt](../store/DESIGN-BRIEF.md) |
 | 6 | Take five screenshots | [3 § Step 3](3-CHROME-WEB-STORE.md) |
+| — | Frame them consistently | [brief + prompt](../store/DESIGN-BRIEF.md) |
 | 7 | Submit — **unlisted** | [3 § Step 6](3-CHROME-WEB-STORE.md) |
 
 Step 4 is the one to not skip. It is the only step that can still tell you

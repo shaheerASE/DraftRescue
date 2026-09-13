@@ -115,7 +115,12 @@ would be described as one, plainly, before it did so.
 
 ## Contact
 
-Open an issue in the project's repository.
+Email **shaheerrehan18@gmail.com**, or open an issue in the project's
+repository at <https://github.com/shaheerASE/DraftRescue>.
+
+The email reaches M. Shaheer Rehan, who wrote the extension and holds its
+copyright. Use it for anything about your data or this policy; an issue is
+public, so email is the better channel if what you are asking about is not.
 
 ---
 
