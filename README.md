@@ -661,7 +661,7 @@ meaningfully drift.
 
 ```
 Draft Rescue — recovers text you typed into a web page and lost.
-Copyright (C) 2026 shaheerDev
+Copyright (C) 2026 M. Shaheer Rehan
 
 This program is free software: you can redistribute it and/or modify it under
 the terms of the GNU General Public License as published by the Free Software
@@ -675,6 +675,10 @@ PARTICULAR PURPOSE. See the GNU General Public License for more details.
 You should have received a copy of the GNU General Public License along with
 this program. If not, see <https://www.gnu.org/licenses/>.
 ```
+
+Copyright is held by M. Shaheer Rehan <shaheerrehan18@gmail.com>. Commits in
+this repository are authored under the git handle `shaheerDev`; that is the
+same person, not a second claimant.
 
 ### Why copyleft, for a browser extension
 

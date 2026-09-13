@@ -137,10 +137,9 @@ And fix the one place that currently contradicts it —
 > There is no registration step and no fee — copyright exists from the moment you
 > wrote the code, and the licence file is what grants everyone else permission.
 >
-> **One thing is still yours:** the copyright line currently names the git
-> identity `shaheerDev`. Replace it with your legal name, or with the registered
-> business name if you form one in Part D. A handle is workable but weaker if it
-> ever has to be enforced.
+> The copyright holder is **M. Shaheer Rehan**. If you register a business in
+> Part D, copyright can be assigned to it later — holding it personally now and
+> assigning afterwards is the normal order, not a mistake to correct.
 
 ---
 

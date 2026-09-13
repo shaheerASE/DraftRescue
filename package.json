@@ -4,6 +4,7 @@
   "version": "0.1.0",
   "private": true,
   "license": "GPL-3.0-or-later",
+  "author": "M. Shaheer Rehan <shaheerrehan18@gmail.com>",
   "type": "module",
   "description": "Never lose what you typed. Saves your drafts locally, on your own machine.",
   "scripts": {

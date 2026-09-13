@@ -75,9 +75,8 @@ it even to check it. Copyleft keeps the code auditable while making a
 closed-source commercial fork a violation. Reasoning in
 [`../docs/1-LICENSING.md`](../docs/1-LICENSING.md).
 
-One thing still needs you: the copyright line in `README.md` names the git
-identity `shaheerDev`. Replace it with the legal name or registered entity that
-should hold the copyright.
+The copyright holder is **M. Shaheer Rehan**, recorded in `README.md` and in
+`package.json`.
 
 ### 5. A link to the source, in the listing — done
 
@@ -100,6 +99,12 @@ test.
 ### 6. A developer account
 
 One-time **$5 USD** registration fee, paid by card.
+
+The dashboard also requires a **contact email, which is published on your
+listing** for anyone to see. Use `shaheerrehan18@gmail.com` — the same address as
+the copyright holder, so the listing, the licence and the repository all name
+one person. Expect some spam at it; that is the cost of a published contact and
+it is not avoidable for a Web Store listing.
 
 > Worth checking early given you are in Pakistan: confirm the payment goes
 > through before doing any of the rest. It is a Google Payments transaction, not
