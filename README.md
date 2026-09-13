@@ -14,6 +14,20 @@ the built bundle.
 
 ---
 
+## What's next
+
+The code is feature-complete. What remains is a decision, a designer, or a form.
+See [`docs/`](docs/) — a roadmap plus three guidebooks:
+
+- [Getting it licensed](docs/1-LICENSING.md) — source licence, user terms,
+  and registering a business in Pakistan
+- [Payments and subscriptions](docs/2-PAYMENTS.md) — why a licence check must
+  not touch the network, and how to charge from a country Stripe does not serve
+- [Publishing on the Chrome Web Store](docs/3-CHROME-WEB-STORE.md) — the full
+  submission walkthrough, and what review will ask
+
+---
+
 ## Why this exists
 
 Every other draft-recovery extension handles only `<textarea>` and `<input>`.
