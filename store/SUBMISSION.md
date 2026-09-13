@@ -13,6 +13,7 @@ What is ready, what still needs a person, and what to expect from review.
 | Single purpose statement | `store/LISTING.md` |
 | Listing copy | `store/LISTING.md` |
 | Source licence | `LICENSE` — GPL-3.0-or-later |
+| Source link for the listing | `store/LISTING.md` |
 | Package | `npm run zip` → `.output/draft-rescue-0.1.0-chrome.zip` |
 
 ---
@@ -78,21 +79,23 @@ One thing still needs you: the copyright line in `README.md` names the git
 identity `shaheerDev`. Replace it with the legal name or registered entity that
 should hold the copyright.
 
-### 5. A link to the source, in the listing
+### 5. A link to the source, in the listing — done
 
 Now that the extension is GPL, distributing the built package carries one
-obligation: recipients must be able to get the **source that built it**.
-
-The repository being public satisfies this, but only if people can find it. Add
-the repository URL to the listing's detailed description — a single line under
-the "you can check this yourself" paragraph is enough:
+obligation: recipients must be able to get the **source that built it**. The
+repository being public satisfies that, but only if people can find it, so the
+detailed description in `store/LISTING.md` now carries:
 
 ```
-Source code: https://github.com/<you>/DraftRescue
+Source code: https://github.com/shaheerASE/DraftRescue
+Licence: GPL-3.0
 ```
 
-This is also the single most persuasive line in the whole listing for a privacy
-tool, so it earns its place twice over.
+The repository is public as of writing, so the URL resolves. **Re-check it in a
+private window, signed out of GitHub, immediately before you submit** — a 404 on
+that line is worse than no line at all: it is a broken promise in the listing
+text and a GPL compliance gap at the same time, on the one claim reviewers will
+test.
 
 ### 6. A developer account
 

@@ -2,6 +2,12 @@
 
 Paste-ready. Field limits are Chrome's.
 
+> **The source link is not optional.** The extension is GPL-3.0, and
+> distributing a built copy carries an obligation to let recipients get the
+> source that built it. The URL below in the detailed description is what
+> satisfies it. It is also the most persuasive line in the listing for a privacy
+> tool, so do not cut it for length.
+>
 > **A note on claims before you paste anything.** Everything below describes
 > capability in general terms and names no specific website. That is deliberate:
 > a store listing is a public claim, and a listing that promises "works in
@@ -125,8 +131,12 @@ network code in the extension at all. It requests no permission to reach any
 website's server, and it doesn't even load its own fonts from anywhere — every
 pixel it draws comes from files inside it.
 
-You can check this yourself. The source is open, and running one command against
-the built extension will tell you whether any way to transmit data exists in it.
+You can check this yourself. The whole source is public, and running one command
+against the built extension will tell you whether any way to transmit data
+exists in it.
+
+Source code: https://github.com/shaheerASE/DraftRescue
+Licence: GPL-3.0
 
 
 YOU'RE IN CONTROL
