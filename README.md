@@ -651,14 +651,45 @@ are all wrong at the same time.
 
 ## Licence
 
-**Not yet chosen — this is a decision for the author, and it should be made
-before the source is public.**
+**GPL-3.0-or-later.** The full text is in [`LICENSE`](LICENSE).
 
-It matters more than it looks for this project. The privacy claim rests on
-anyone being able to read the source and verify it, which means the source has
-to be public, which means it needs a licence. Without one, the default is "all
-rights reserved" and nobody may legally copy it even to check it.
+`public/LICENSE` is a verbatim copy of the same file, which WXT ships to the
+root of the built extension. The GPL requires the licence to travel with the
+program when you distribute a built copy, and the Web Store package is a built
+copy. The GPL-3.0 text has not changed since 2007, so the two cannot
+meaningfully drift.
 
-MIT is the usual choice for something like this and imposes nothing on anyone.
-A copyleft licence (GPL) would stop a closed-source fork, at the cost of some
-goodwill. Either works; no licence does not.
+```
+Draft Rescue — recovers text you typed into a web page and lost.
+Copyright (C) 2026 shaheerDev
+
+This program is free software: you can redistribute it and/or modify it under
+the terms of the GNU General Public License as published by the Free Software
+Foundation, either version 3 of the License, or (at your option) any later
+version.
+
+This program is distributed in the hope that it will be useful, but WITHOUT ANY
+WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A
+PARTICULAR PURPOSE. See the GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License along with
+this program. If not, see <https://www.gnu.org/licenses/>.
+```
+
+### Why copyleft, for a browser extension
+
+The privacy claim above only works if you are allowed to act on it. Source
+published with no licence is, by default, all rights reserved — copyright
+attaches the moment it is written, and nobody may legally copy it, *even to
+check the claim*. "Clone it and run `check:offline`" would be an invitation to
+do something unlawful.
+
+So a licence is not optional here. GPL was chosen over MIT for one reason: it
+keeps the code readable and auditable, which is what the privacy claim rests on,
+while a closed-source commercial fork remains a licence violation. You may use
+it, change it, run it, and sell it; a version you distribute must also be GPL.
+
+This is a legal position, not a technical one. Nobody can hide a Chrome
+extension's code anyway — anyone can unzip the package and read every line, and
+that is fine. See [`docs/1-LICENSING.md`](docs/1-LICENSING.md) for the full
+reasoning and the alternatives that were rejected.

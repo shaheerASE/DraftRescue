@@ -3,6 +3,7 @@
   "displayName": "Draft Rescue",
   "version": "0.1.0",
   "private": true,
+  "license": "GPL-3.0-or-later",
   "type": "module",
   "description": "Never lose what you typed. Saves your drafts locally, on your own machine.",
   "scripts": {

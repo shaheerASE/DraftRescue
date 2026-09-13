@@ -12,6 +12,7 @@ What is ready, what still needs a person, and what to expect from review.
 | Permission justifications | `store/PERMISSIONS.md` |
 | Single purpose statement | `store/LISTING.md` |
 | Listing copy | `store/LISTING.md` |
+| Source licence | `LICENSE` — GPL-3.0-or-later |
 | Package | `npm run zip` → `.output/draft-rescue-0.1.0-chrome.zip` |
 
 ---
@@ -61,17 +62,39 @@ Cheapest options that will not rot:
 Whatever you pick, keep `PRIVACY.md` as the canonical copy and publish from it,
 so the two cannot drift apart.
 
-### 4. A licence for the source
+### 4. A licence for the source — done
 
-**Not yet chosen.** It is listed here because the privacy claim depends on it:
-the argument is "read the source and verify it", which only works if the source
-is public, and public source without a licence is legally all-rights-reserved —
-nobody may copy it even to check it.
+**GPL-3.0-or-later.** `LICENSE` is in the repository root and `package.json`
+declares it.
 
-MIT is the usual choice and imposes nothing. GPL would prevent a closed-source
-fork at some cost in goodwill. Pick one before the repository goes public.
+It was listed here because the privacy claim depends on it: the argument is
+"read the source and verify it", which only works if the source is public, and
+public source without a licence is legally all-rights-reserved — nobody may copy
+it even to check it. Copyleft keeps the code auditable while making a
+closed-source commercial fork a violation. Reasoning in
+[`../docs/1-LICENSING.md`](../docs/1-LICENSING.md).
 
-### 5. A developer account
+One thing still needs you: the copyright line in `README.md` names the git
+identity `shaheerDev`. Replace it with the legal name or registered entity that
+should hold the copyright.
+
+### 5. A link to the source, in the listing
+
+Now that the extension is GPL, distributing the built package carries one
+obligation: recipients must be able to get the **source that built it**.
+
+The repository being public satisfies this, but only if people can find it. Add
+the repository URL to the listing's detailed description — a single line under
+the "you can check this yourself" paragraph is enough:
+
+```
+Source code: https://github.com/<you>/DraftRescue
+```
+
+This is also the single most persuasive line in the whole listing for a privacy
+tool, so it earns its place twice over.
+
+### 6. A developer account
 
 One-time **$5 USD** registration fee, paid by card.
 

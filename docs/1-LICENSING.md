@@ -104,12 +104,18 @@ work, and those are only visible to someone who has already done the work.
 ## How to actually apply it
 
 ```bash
-# 1. Get the exact text — never paraphrase a licence
+# 1. Get the exact text — never paraphrase or retype a licence
 curl -o LICENSE https://www.gnu.org/licenses/gpl-3.0.txt
 
 # 2. Declare it where tooling looks
 #    package.json:  "license": "GPL-3.0-or-later"
+
+# 3. Put the copyright notice and the standard GPL blurb in README.md
 ```
+
+The FSF also suggests a short notice at the top of every source file. That is
+worth doing for a library other people will copy files out of; for a single
+application it adds boilerplate to every file and the root notice is enough.
 
 Then add to the top of `README.md`:
 
@@ -126,9 +132,15 @@ it; a redistributed version must also be GPL.
 And fix the one place that currently contradicts it —
 `store/SUBMISSION.md` §4 still says *"Not yet chosen."*
 
-> **Careful:** your `package.json` currently has no `license` field, and there is
-> no `LICENSE` file. Adding the file is the whole job; there is no registration
-> step and no fee. Copyright exists from the moment you wrote the code.
+> **Done.** `LICENSE` holds the verbatim GPL-3.0 text, `package.json` declares
+> `"license": "GPL-3.0-or-later"`, and `README.md` carries the copyright notice.
+> There is no registration step and no fee — copyright exists from the moment you
+> wrote the code, and the licence file is what grants everyone else permission.
+>
+> **One thing is still yours:** the copyright line currently names the git
+> identity `shaheerDev`. Replace it with your legal name, or with the registered
+> business name if you form one in Part D. A handle is workable but weaker if it
+> ever has to be enforced.
 
 ---
 
